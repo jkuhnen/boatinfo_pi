@@ -235,6 +235,47 @@ int testplugin_pi::Init(void)
 
     // Get a pointer to the opencpn display canvas, to use as a parent for windows created
     m_parent_window = GetOCPNCanvasWindow();
+
+    // Our Hello World docked panel
+    m_auiManager = GetFrameAuiManager();
+
+    wxWindow* auiParent = m_auiManager->GetManagedWindow();
+
+    m_helloPanel = new wxWindow(auiParent, wxID_ANY, wxDefaultPosition,
+                                wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
+
+    wxColour panelBackground;
+    GetGlobalColor(wxT("DILG1"), &panelBackground);
+    m_helloPanel->SetBackgroundColour(panelBackground);
+
+    wxColour panelText;
+    GetGlobalColor(wxT("DILG3"), &panelText);
+    m_helloPanel->SetForegroundColour(panelText);
+
+    wxBoxSizer* helloSizer = new wxBoxSizer(wxVERTICAL);
+    helloSizer->Add(
+        new wxStaticText(m_helloPanel, wxID_ANY, wxT("Hello World")), 0, wxALL,
+        20);
+
+    m_helloPanel->SetSizer(helloSizer);
+
+    wxAuiPaneInfo helloPane;
+    helloPane.Name(wxT("HelloWorldPanel"))
+        .Caption(wxT("Hello World"))
+        .Right()
+        .BestSize(300, -1)
+        .MinSize(200, -1)
+        .Floatable(false)
+        .RightDockable(true)
+        .LeftDockable(false)
+        .TopDockable(false)
+        .BottomDockable(false)
+        .CloseButton(true)
+        .Show(true);
+
+    m_auiManager->AddPane(m_helloPanel, helloPane);
+    m_auiManager->Update();
+
     m_pTPConfig = GetOCPNConfigObject();
 
     m_tpControlDialogImpl = new tpControlDialogImpl(m_parent_window);
@@ -284,7 +325,7 @@ int testplugin_pi::Init(void)
         INSTALLS_CONTEXTMENU_ITEMS  |
 //        WANTS_NMEA_EVENTS         |
 //        WANTS_NMEA_SENTENCES        |
-        //    USES_AUI_MANAGER            |
+        USES_AUI_MANAGER            |
 //        WANTS_PREFERENCES         |
         //    WANTS_ONPAINT_VIEWPORT      |
         WANTS_PLUGIN_MESSAGING    |
@@ -303,6 +344,18 @@ void testplugin_pi::LateInit(void)
 
 bool testplugin_pi::DeInit(void)
 {
+    if (m_helloPanel && m_auiManager)
+    {
+         m_auiManager->DetachPane(m_helloPanel);
+         m_helloPanel->Destroy();
+         m_helloPanel = nullptr;
+
+         m_auiManager->Update();
+    }
+
+    m_auiManager = nullptr;
+
+
     if(m_tpControlDialogImpl)
     {
         m_tpControlDialogImpl->Close();

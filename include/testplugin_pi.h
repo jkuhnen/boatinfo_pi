@@ -161,6 +161,9 @@ public:
     wxFileConfig        *m_pTPConfig;
     wxTimer             *m_timer;
 
+    wxAuiManager* m_auiManager = nullptr;
+    //wxPanel* m_helloPanel = nullptr;
+    wxWindow* m_helloPanel = nullptr;
 
     //    The required PlugIn Methods
     int Init(void);
