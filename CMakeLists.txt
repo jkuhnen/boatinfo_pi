@@ -72,7 +72,7 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "0")
-set(VERSION_PATCH "371")
+set(VERSION_PATCH "372")
 set(VERSION_TWEAK "0")
 set(VERSION_DATE "14/08/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
@@ -167,6 +167,9 @@ if (NOT OCPN_FLATPAK_CONFIG)
 
   add_subdirectory(opencpn-libs/api-${OCPN_API_VERSION_MINOR})
   target_link_libraries(${PACKAGE_NAME} ocpn::api)
+
+  add_subdirectory(opencpn-libs/wxJSON)
+  target_link_libraries(${PACKAGE_NAME} ocpn::wxjson)
 
 endif (NOT OCPN_FLATPAK_CONFIG)
 

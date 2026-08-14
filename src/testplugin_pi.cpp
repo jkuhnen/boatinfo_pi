@@ -4,6 +4,8 @@
 #include <cmath>
 
 #include <wx/datetime.h>
+#include <wx/jsonreader.h>
+#include <wx/jsonval.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 
@@ -30,6 +32,45 @@ void SetLabel(wxStaticText* control, const wxString& value) {
   if (control) {
     control->SetLabel(value);
   }
+}
+
+bool JsonNumber(const wxJSONValue& value, double& result) {
+  switch (value.GetType()) {
+    case wxJSONTYPE_DOUBLE:
+      result = value.AsDouble();
+      return true;
+    case wxJSONTYPE_INT:
+      result = static_cast<double>(value.AsInt());
+      return true;
+    case wxJSONTYPE_UINT:
+      result = static_cast<double>(value.AsUInt());
+      return true;
+    case wxJSONTYPE_LONG:
+      result = static_cast<double>(value.AsLong());
+      return true;
+    case wxJSONTYPE_ULONG:
+      result = static_cast<double>(value.AsULong());
+      return true;
+    case wxJSONTYPE_SHORT:
+      result = static_cast<double>(value.AsShort());
+      return true;
+    case wxJSONTYPE_USHORT:
+      result = static_cast<double>(value.AsUShort());
+      return true;
+    default:
+      return false;
+  }
+}
+
+wxString FormatRemaining(double seconds) {
+  if (!std::isfinite(seconds) || seconds < 0.0) {
+    return wxT("---");
+  }
+
+  const long totalMinutes = static_cast<long>(std::lround(seconds / 60.0));
+  const long hours = totalMinutes / 60;
+  const long minutes = totalMinutes % 60;
+  return wxString::Format(wxT("%ld h %02ld min"), hours, minutes);
 }
 }  // namespace
 
@@ -120,6 +161,7 @@ int testplugin_pi::Init() {
   m_voltageValue = addRow(batteryGrid, wxT("Voltage"), wxT("--- V"));
   m_powerValue = addRow(batteryGrid, wxT("Power"), wxT("--- W"));
   m_starterVoltageValue = addRow(batteryGrid, wxT("Starter"), wxT("--- V"));
+  m_signalKStatusValue = addRow(batteryGrid, wxT("Source"), wxT("waiting"));
   sizer->Add(batteryGrid, 0, wxEXPAND | wxALL, 15);
 
   m_helloPanel->SetSizer(sizer);
@@ -141,7 +183,8 @@ int testplugin_pi::Init() {
   m_auiManager->AddPane(m_helloPanel, pane);
   m_auiManager->Update();
 
-  return USES_AUI_MANAGER | WANTS_NMEA_EVENTS;
+  return USES_AUI_MANAGER | WANTS_NMEA_EVENTS | WANTS_NMEA_SENTENCES |
+         WANTS_PLUGIN_MESSAGING;
 }
 
 void testplugin_pi::SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) {
@@ -181,6 +224,109 @@ void testplugin_pi::SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) {
   }
 }
 
+void testplugin_pi::SetNMEASentence(wxString& sentence) {
+  if (sentence.Find(wxT("XDR")) != wxNOT_FOUND) {
+    SetLabel(m_signalKStatusValue, wxT("NMEA XDR"));
+  }
+}
+
+void testplugin_pi::SetPluginMessage(wxString& message_id,
+                                     wxString& message_body) {
+  if (message_id == wxT("OCPN_CORE_SIGNALK")) {
+    SetLabel(m_signalKStatusValue, wxT("Signal K"));
+    ParseSignalK(message_body);
+  }
+}
+
+void testplugin_pi::ParseSignalK(const wxString& message) {
+  wxJSONValue root;
+  wxJSONReader reader;
+  if (reader.Parse(message, &root) != 0 || !root.IsObject()) {
+    return;
+  }
+
+  if (root.HasMember(wxT("self")) && root[wxT("self")].IsString()) {
+    m_signalKSelf = wxT("vessels.") + root[wxT("self")].AsString();
+  }
+
+  if (root.HasMember(wxT("context")) && root[wxT("context")].IsString() &&
+      !m_signalKSelf.IsEmpty() &&
+      root[wxT("context")].AsString() != m_signalKSelf) {
+    return;
+  }
+
+  if (!root.HasMember(wxT("updates")) || !root[wxT("updates")].IsArray()) {
+    return;
+  }
+
+  wxJSONValue& updates = root[wxT("updates")];
+  for (int i = 0; i < updates.Size(); ++i) {
+    wxJSONValue& update = updates[i];
+    if (!update.IsObject() || !update.HasMember(wxT("values")) ||
+        !update[wxT("values")].IsArray()) {
+      continue;
+    }
+
+    wxJSONValue& values = update[wxT("values")];
+    for (int j = 0; j < values.Size(); ++j) {
+      wxJSONValue& item = values[j];
+      if (!item.IsObject() || !item.HasMember(wxT("path")) ||
+          !item[wxT("path")].IsString() || !item.HasMember(wxT("value"))) {
+        continue;
+      }
+      UpdateSignalKPath(item[wxT("path")].AsString(), item[wxT("value")]);
+    }
+  }
+
+  if (m_helloPanel) {
+    m_helloPanel->Layout();
+  }
+}
+
+void testplugin_pi::UpdateSignalKPath(const wxString& path,
+                                      const wxJSONValue& value) {
+  if (path == wxT("name") && value.IsString()) {
+    SetLabel(m_nameValue, value.AsString());
+    return;
+  }
+  if (path == wxT("mmsi")) {
+    if (value.IsString()) {
+      SetLabel(m_mmsiValue, value.AsString());
+    } else {
+      double number = 0.0;
+      if (JsonNumber(value, number)) {
+        SetLabel(m_mmsiValue, wxString::Format(wxT("%.0f"), number));
+      }
+    }
+    return;
+  }
+  if (path == wxT("communication.callsignVhf") && value.IsString()) {
+    SetLabel(m_callSignValue, value.AsString());
+    return;
+  }
+
+  double number = 0.0;
+  if (!JsonNumber(value, number)) {
+    return;
+  }
+
+  if (path == wxT("electrical.batteries.service.capacity.stateOfCharge")) {
+    SetLabel(m_socValue, wxString::Format(wxT("%.0f %%"), number * 100.0));
+  } else if (path ==
+             wxT("electrical.batteries.service.capacity.timeRemaining")) {
+    SetLabel(m_remainingValue, FormatRemaining(number));
+  } else if (path == wxT("electrical.batteries.service.current")) {
+    SetLabel(m_currentValue, wxString::Format(wxT("%.2f A"), number));
+  } else if (path == wxT("electrical.batteries.service.voltage")) {
+    SetLabel(m_voltageValue, wxString::Format(wxT("%.2f V"), number));
+  } else if (path == wxT("electrical.batteries.service.power")) {
+    SetLabel(m_powerValue, wxString::Format(wxT("%.1f W"), number));
+  } else if (path == wxT("electrical.batteries.starter.voltage")) {
+    SetLabel(m_starterVoltageValue,
+             wxString::Format(wxT("%.2f V"), number));
+  }
+}
+
 bool testplugin_pi::DeInit() {
   m_nameValue = nullptr;
   m_mmsiValue = nullptr;
@@ -197,6 +343,7 @@ bool testplugin_pi::DeInit() {
   m_voltageValue = nullptr;
   m_powerValue = nullptr;
   m_starterVoltageValue = nullptr;
+  m_signalKStatusValue = nullptr;
 
   if (m_helloPanel && m_auiManager) {
     m_auiManager->DetachPane(m_helloPanel);

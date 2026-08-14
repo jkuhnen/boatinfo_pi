@@ -5,6 +5,7 @@
 
 #include <wx/aui/aui.h>
 
+class wxJSONValue;
 class wxStaticText;
 
 class testplugin_pi : public opencpn_plugin_118 {
@@ -16,6 +17,8 @@ public:
   bool DeInit();
 
   void SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) override;
+  void SetNMEASentence(wxString& sentence) override;
+  void SetPluginMessage(wxString& message_id, wxString& message_body) override;
 
   int GetPlugInVersionMajor();
   int GetPlugInVersionMinor();
@@ -30,6 +33,9 @@ public:
   wxString GetLongDescription();
 
 private:
+  void ParseSignalK(const wxString& message);
+  void UpdateSignalKPath(const wxString& path, const wxJSONValue& value);
+
   wxAuiManager* m_auiManager = nullptr;
   wxWindow* m_helloPanel = nullptr;
 
@@ -50,6 +56,9 @@ private:
   wxStaticText* m_voltageValue = nullptr;
   wxStaticText* m_powerValue = nullptr;
   wxStaticText* m_starterVoltageValue = nullptr;
+  wxStaticText* m_signalKStatusValue = nullptr;
+
+  wxString m_signalKSelf;
 };
 
 #endif
