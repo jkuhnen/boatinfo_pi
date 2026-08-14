@@ -61,21 +61,21 @@ endif (COMMAND cmake_policy)
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
 # define plugin name, owner and versions
-set(VERBOSE_NAME "Testplugin")
-set(COMMON_NAME "Testplugin")
+set(VERBOSE_NAME "BenchyNav")
+set(COMMON_NAME "BenchyNav")
 set(TITLE_NAME "testplugin")
-set(PACKAGE_CONTACT "Jon Gough")
+set(PACKAGE_CONTACT "Johannes Kuhnen")
 set(PACKAGE "testplugin")
 set(SHORT_DESCRIPTION
-    "Plugin to test examples of the ODAPI and JSON interface for ODRAW"
+    "Benchy vessel information and navigation data"
 )
 set(LONG_DESCRIPTION
-    "testplugin Plugin is used to test out the ODraw API and demonstrate how to use it successfully from another plugin"
+    "Displays Benchy vessel information and navigation data in a docked OpenCPN panel."
 )
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "0")
-set(VERSION_PATCH "365")
+set(VERSION_PATCH "367")
 set(VERSION_TWEAK "0")
 set(VERSION_DATE "19/06/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
@@ -192,37 +192,6 @@ add_definitions(-DPLUGIN_USE_SVG)
 
 # ----- Section above - Add your project SET(SRCS and SET(HDRS  etc.
 
-# ----- If using JSON validation in plugin section below is needed
-
-if (APPLE)
-  option(OD_JSON_SCHEMA_VALIDATOR "Use JSON Schema validator" OFF)
-else (APPLE)
-  option(OD_JSON_SCHEMA_VALIDATOR "Use JSON Schema validator" ON)
-endif (APPLE)
-
-set(OD_JSON_SCHEMA_VALIDATOR ON)
-
-if (OD_JSON_SCHEMA_VALIDATOR)
-  message(
-    STATUS
-      "${CMLOC}Using JSON Schema validation - warning this changes the 'flavour' of the executable and it may not be compatible with OpenCPN"
-  )
-  add_definitions(-DOD_JSON_SCHEMA_VALIDATOR)
-  message(STATUS "${CMLOC}Adding JSON Schema validation")
-
-# removed for testing
-  add_subdirectory(opencpn-libs/json-schema-validator)
-  target_link_libraries(${PACKAGE_NAME} ocpn::json-schema-validator)
-
-else (OD_JSON_SCHEMA_VALIDATOR)
-  message(
-    STATUS
-      "${CMLOC}Not using JSON Schema validation - warning invalid JSON 'may' cause unexpected crashes"
-  )
-endif (OD_JSON_SCHEMA_VALIDATOR)
-
-# ----- If using JSON validation in plugin section above is needed
-
 if (QT_ANDROID)
 
 endif (QT_ANDROID)
@@ -259,21 +228,6 @@ if (NOT OCPN_FLATPAK_CONFIG)
 
   add_subdirectory(opencpn-libs/api-${OCPN_API_VERSION_MINOR})
   target_link_libraries(${PACKAGE_NAME} ocpn::api)
-
-  add_subdirectory(opencpn-libs/tinyxml)
-  target_link_libraries(${PACKAGE_NAME} ocpn::tinyxml)
-
-  add_subdirectory(opencpn-libs/odapi)
-  target_link_libraries(${PACKAGE_NAME} ocpn::odapi)
-
-  add_subdirectory(opencpn-libs/jsonlib)
-  target_link_libraries(${PACKAGE_NAME} ocpn::jsonlib)
-
-  add_subdirectory(opencpn-libs/wxJSON)
-  target_link_libraries(${PACKAGE_NAME} ocpn::wxjson)
-
-  add_subdirectory(opencpn-libs/plugin_dc)
-  target_link_libraries(${PACKAGE_NAME} ocpn::plugin-dc)
 
 endif (NOT OCPN_FLATPAK_CONFIG)
 
