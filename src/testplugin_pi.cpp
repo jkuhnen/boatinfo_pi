@@ -10,8 +10,6 @@
 #define BENCHYNAV_EXPORT
 #endif
 
-
-
 extern "C" BENCHYNAV_EXPORT opencpn_plugin* create_pi(void* ppimgr) {
   return new testplugin_pi(ppimgr);
 }
@@ -36,14 +34,67 @@ int testplugin_pi::Init() {
 
   wxColour panelText;
   GetGlobalColor(wxT("DILG3"), &panelText);
-
-  wxStaticText* helloText =
-      new wxStaticText(m_helloPanel, wxID_ANY, wxT("BenchyNav"));
-
-  helloText->SetForegroundColour(panelText);
+  m_helloPanel->SetForegroundColour(panelText);
 
   wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
-  sizer->Add(helloText, 0, wxALL, 20);
+
+  wxStaticText* title =
+      new wxStaticText(m_helloPanel, wxID_ANY, wxT("BenchyNav"));
+  title->SetForegroundColour(panelText);
+  wxFont titleFont = title->GetFont();
+  titleFont.SetWeight(wxFONTWEIGHT_BOLD);
+  titleFont.SetPointSize(titleFont.GetPointSize() + 2);
+  title->SetFont(titleFont);
+  sizer->Add(title, 0, wxALL, 15);
+
+  auto addSectionTitle = [&](const wxString& text) {
+    wxStaticText* section =
+        new wxStaticText(m_helloPanel, wxID_ANY, text);
+    section->SetForegroundColour(panelText);
+    wxFont sectionFont = section->GetFont();
+    sectionFont.SetWeight(wxFONTWEIGHT_BOLD);
+    section->SetFont(sectionFont);
+    sizer->Add(section, 0, wxLEFT | wxRIGHT | wxTOP, 15);
+  };
+
+  auto addRow = [&](wxFlexGridSizer* grid, const wxString& label,
+                    const wxString& value) {
+    wxStaticText* labelText =
+        new wxStaticText(m_helloPanel, wxID_ANY, label);
+    labelText->SetForegroundColour(panelText);
+    grid->Add(labelText, 0, wxALIGN_LEFT | wxALIGN_CENTER_VERTICAL);
+
+    wxStaticText* valueText =
+        new wxStaticText(m_helloPanel, wxID_ANY, value);
+    valueText->SetForegroundColour(panelText);
+    grid->Add(valueText, 0, wxALIGN_LEFT | wxALIGN_CENTER_VERTICAL);
+  };
+
+  addSectionTitle(wxT("VESSEL"));
+  wxFlexGridSizer* vesselGrid = new wxFlexGridSizer(2, 8, 20);
+  vesselGrid->AddGrowableCol(1, 1);
+  addRow(vesselGrid, wxT("MMSI"), wxT("---"));
+  addRow(vesselGrid, wxT("Call Sign"), wxT("---"));
+  sizer->Add(vesselGrid, 0, wxEXPAND | wxALL, 15);
+
+  addSectionTitle(wxT("NAVIGATION"));
+  wxFlexGridSizer* navGrid = new wxFlexGridSizer(2, 8, 20);
+  navGrid->AddGrowableCol(1, 1);
+  addRow(navGrid, wxT("Latitude"), wxT("---"));
+  addRow(navGrid, wxT("Longitude"), wxT("---"));
+  addRow(navGrid, wxT("COG"), wxT("--- deg"));
+  addRow(navGrid, wxT("SOG"), wxT("--- kn"));
+  addRow(navGrid, wxT("Date"), wxT("--.--.----"));
+  addRow(navGrid, wxT("Time"), wxT("--:--:--"));
+  sizer->Add(navGrid, 0, wxEXPAND | wxALL, 15);
+
+  addSectionTitle(wxT("BATTERY"));
+  wxFlexGridSizer* batteryGrid = new wxFlexGridSizer(2, 8, 20);
+  batteryGrid->AddGrowableCol(1, 1);
+  addRow(batteryGrid, wxT("State"), wxT("--- %"));
+  addRow(batteryGrid, wxT("Remaining"), wxT("---"));
+  addRow(batteryGrid, wxT("Current"), wxT("--- A"));
+  sizer->Add(batteryGrid, 0, wxEXPAND | wxALL, 15);
 
   m_helloPanel->SetSizer(sizer);
 
