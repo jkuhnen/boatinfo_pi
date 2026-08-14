@@ -75,7 +75,7 @@ set(LONG_DESCRIPTION
 
 set(VERSION_MAJOR "1")
 set(VERSION_MINOR "0")
-set(VERSION_PATCH "368")
+set(VERSION_PATCH "369")
 set(VERSION_TWEAK "0")
 set(VERSION_DATE "14/08/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
@@ -262,7 +262,7 @@ if (UNIX
     else (NOT (${elfedit} STREQUAL "elfedit-NOTFOUND"))
       message(
         STATUS
-          "${CMLOC}Cannot correct OS/ABI to match OCPN if it is generated incorrectly. Package binutils needed"
+          "${CMLOC}Cannot correct OS/ABI to match OpenCPN if it is generated incorrectly. Package binutils needed"
       )
     endif (NOT (${elfedit} STREQUAL "elfedit-NOTFOUND"))
   endif (OD_JSON_SCHEMA_VALIDATOR)
