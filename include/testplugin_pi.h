@@ -6,8 +6,6 @@
 #include <wx/aui/aui.h>
 
 class wxStaticText;
-class wxTimer;
-class wxTimerEvent;
 
 class testplugin_pi : public opencpn_plugin_118 {
 public:
@@ -32,12 +30,8 @@ public:
   wxString GetLongDescription();
 
 private:
-  void OnSignalKTimer(wxTimerEvent& event);
-  bool UpdateSignalK();
-
   wxAuiManager* m_auiManager = nullptr;
   wxWindow* m_helloPanel = nullptr;
-  wxTimer* m_signalKTimer = nullptr;
 
   wxStaticText* m_nameValue = nullptr;
   wxStaticText* m_mmsiValue = nullptr;
