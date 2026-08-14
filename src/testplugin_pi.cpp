@@ -1,6 +1,7 @@
 #include "testplugin_pi.h"
 #include "version.h"
 
+#include <cmath>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 
@@ -9,6 +10,20 @@
 #else
 #define BENCHYNAV_EXPORT
 #endif
+
+namespace {
+wxString FormatCoordinate(double value, wxChar positiveHemisphere,
+                          wxChar negativeHemisphere) {
+  if (!std::isfinite(value)) {
+    return wxT("---");
+  }
+
+  wxString result = wxString::Format(wxT("%.5f"), std::fabs(value));
+  result += wxT(" ");
+  result += value >= 0.0 ? positiveHemisphere : negativeHemisphere;
+  return result;
+}
+}  // namespace
 
 extern "C" BENCHYNAV_EXPORT opencpn_plugin* create_pi(void* ppimgr) {
   return new testplugin_pi(ppimgr);
@@ -58,7 +73,7 @@ int testplugin_pi::Init() {
   };
 
   auto addRow = [&](wxFlexGridSizer* grid, const wxString& label,
-                    const wxString& value) {
+                    const wxString& value) -> wxStaticText* {
     wxStaticText* labelText =
         new wxStaticText(m_helloPanel, wxID_ANY, label);
     labelText->SetForegroundColour(panelText);
@@ -68,6 +83,7 @@ int testplugin_pi::Init() {
         new wxStaticText(m_helloPanel, wxID_ANY, value);
     valueText->SetForegroundColour(panelText);
     grid->Add(valueText, 0, wxALIGN_LEFT | wxALIGN_CENTER_VERTICAL);
+    return valueText;
   };
 
   addSectionTitle(wxT("VESSEL"));
@@ -80,8 +96,8 @@ int testplugin_pi::Init() {
   addSectionTitle(wxT("NAVIGATION"));
   wxFlexGridSizer* navGrid = new wxFlexGridSizer(2, 8, 20);
   navGrid->AddGrowableCol(1, 1);
-  addRow(navGrid, wxT("Latitude"), wxT("---"));
-  addRow(navGrid, wxT("Longitude"), wxT("---"));
+  m_latitudeValue = addRow(navGrid, wxT("Latitude"), wxT("---"));
+  m_longitudeValue = addRow(navGrid, wxT("Longitude"), wxT("---"));
   addRow(navGrid, wxT("COG"), wxT("--- deg"));
   addRow(navGrid, wxT("SOG"), wxT("--- kn"));
   addRow(navGrid, wxT("Date"), wxT("--.--.----"));
@@ -115,10 +131,27 @@ int testplugin_pi::Init() {
   m_auiManager->AddPane(m_helloPanel, pane);
   m_auiManager->Update();
 
-  return USES_AUI_MANAGER;
+  return USES_AUI_MANAGER | WANTS_NMEA_EVENTS;
+}
+
+void testplugin_pi::SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) {
+  if (m_latitudeValue) {
+    m_latitudeValue->SetLabel(FormatCoordinate(pfix.Lat, wxT('N'), wxT('S')));
+  }
+
+  if (m_longitudeValue) {
+    m_longitudeValue->SetLabel(FormatCoordinate(pfix.Lon, wxT('E'), wxT('W')));
+  }
+
+  if (m_helloPanel) {
+    m_helloPanel->Layout();
+  }
 }
 
 bool testplugin_pi::DeInit() {
+  m_latitudeValue = nullptr;
+  m_longitudeValue = nullptr;
+
   if (m_helloPanel && m_auiManager) {
     m_auiManager->DetachPane(m_helloPanel);
     m_helloPanel->Destroy();

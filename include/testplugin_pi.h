@@ -5,6 +5,8 @@
 
 #include <wx/aui/aui.h>
 
+class wxStaticText;
+
 class testplugin_pi : public opencpn_plugin_118 {
 public:
   testplugin_pi(void* ppimgr);
@@ -12,6 +14,8 @@ public:
 
   int Init();
   bool DeInit();
+
+  void SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) override;
 
   int GetPlugInVersionMajor();
   int GetPlugInVersionMinor();
@@ -28,6 +32,8 @@ public:
 private:
   wxAuiManager* m_auiManager = nullptr;
   wxWindow* m_helloPanel = nullptr;
+  wxStaticText* m_latitudeValue = nullptr;
+  wxStaticText* m_longitudeValue = nullptr;
 };
 
 #endif
