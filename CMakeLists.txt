@@ -6,18 +6,40 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 set(PACKAGE_NAME "boatinfo_pi")
 set(PACKAGE_VERSION "${PROJECT_VERSION}")
-set(OCPN_API_VERSION "1.18")
+set(OCPN_API_VERSION_MAJOR 1)
+set(OCPN_API_VERSION_MINOR 18)
+set(OCPN_API_VERSION "${OCPN_API_VERSION_MAJOR}.${OCPN_API_VERSION_MINOR}")
+
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/boatinfo.svg"
+    BOATINFO_DAY_ICON_SVG)
+file(READ "${CMAKE_CURRENT_SOURCE_DIR}/assets/icons/boatinfo-white.svg"
+    BOATINFO_WHITE_ICON_SVG)
+file(MAKE_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/generated")
+configure_file(
+    "${CMAKE_CURRENT_SOURCE_DIR}/cmake/in-files/boatinfo_icons.h.in"
+    "${CMAKE_CURRENT_BINARY_DIR}/generated/boatinfo_icons.h"
+    @ONLY
+)
 
 find_package(wxWidgets REQUIRED COMPONENTS base core aui)
 include(${wxWidgets_USE_FILE})
 
 add_library(boatinfo_pi SHARED
     src/boatinfo_pi.cpp
+    src/boatinfo_identity.cpp
     include/boatinfo_pi.h
 )
 
 target_include_directories(boatinfo_pi PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${CMAKE_CURRENT_BINARY_DIR}/generated
+)
+
+target_compile_definitions(boatinfo_pi PRIVATE
+    BOATINFO_API_VERSION_MAJOR=${OCPN_API_VERSION_MAJOR}
+    BOATINFO_API_VERSION_MINOR=${OCPN_API_VERSION_MINOR}
+    BOATINFO_VERSION_MAJOR=${PROJECT_VERSION_MAJOR}
+    BOATINFO_VERSION_MINOR=${PROJECT_VERSION_MINOR}
 )
 
 add_subdirectory(opencpn-libs/api-18)
