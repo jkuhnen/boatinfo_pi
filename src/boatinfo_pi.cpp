@@ -17,9 +17,10 @@
 #endif
 
 namespace {
-wxString FormatCoordinate(double value, wxChar positiveHemisphere,
+wxString FormatCoordinate(double value, double maximumMagnitude,
+                          wxChar positiveHemisphere,
                           wxChar negativeHemisphere) {
-  if (!std::isfinite(value)) {
+  if (!std::isfinite(value) || std::fabs(value) > maximumMagnitude) {
     return wxT("---");
   }
 
@@ -39,28 +40,37 @@ bool JsonNumber(const wxJSONValue& value, double& result) {
   switch (value.GetType()) {
     case wxJSONTYPE_DOUBLE:
       result = value.AsDouble();
-      return true;
+      break;
     case wxJSONTYPE_INT:
       result = static_cast<double>(value.AsInt());
-      return true;
+      break;
     case wxJSONTYPE_UINT:
       result = static_cast<double>(value.AsUInt());
-      return true;
+      break;
     case wxJSONTYPE_LONG:
       result = static_cast<double>(value.AsLong());
-      return true;
+      break;
     case wxJSONTYPE_ULONG:
       result = static_cast<double>(value.AsULong());
-      return true;
+      break;
     case wxJSONTYPE_SHORT:
       result = static_cast<double>(value.AsShort());
-      return true;
+      break;
     case wxJSONTYPE_USHORT:
       result = static_cast<double>(value.AsUShort());
-      return true;
+      break;
     default:
       return false;
   }
+
+  return std::isfinite(result);
+}
+
+wxString NormalizeSignalKSelf(const wxString& self) {
+  if (self.IsEmpty() || self.StartsWith(wxT("vessels."))) {
+    return self;
+  }
+  return wxT("vessels.") + self;
 }
 
 wxString FormatRemaining(double seconds) {
@@ -176,10 +186,16 @@ int boatinfo_pi::Init() {
       .LeftDockable(true)
       .TopDockable(false)
       .BottomDockable(false)
-      .CloseButton(true)
+      .CloseButton(false)
       .Show(true);
 
-  m_auiManager->AddPane(m_panel, pane);
+  if (!m_auiManager->AddPane(m_panel, pane)) {
+    m_panel->Destroy();
+    m_panel = nullptr;
+    ClearControlPointers();
+    m_auiManager = nullptr;
+    return 0;
+  }
   m_auiManager->Update();
 
   return USES_AUI_MANAGER | WANTS_NMEA_EVENTS | WANTS_NMEA_SENTENCES |
@@ -220,8 +236,10 @@ void boatinfo_pi::SetColorScheme(PI_ColorScheme cs) {
 }
 
 void boatinfo_pi::SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) {
-  SetLabel(m_latitudeValue, FormatCoordinate(pfix.Lat, wxT('N'), wxT('S')));
-  SetLabel(m_longitudeValue, FormatCoordinate(pfix.Lon, wxT('E'), wxT('W')));
+  SetLabel(m_latitudeValue,
+           FormatCoordinate(pfix.Lat, 90.0, wxT('N'), wxT('S')));
+  SetLabel(m_longitudeValue,
+           FormatCoordinate(pfix.Lon, 180.0, wxT('E'), wxT('W')));
 
   if (std::isfinite(pfix.Cog)) {
     double cog = std::fmod(pfix.Cog, 360.0);
@@ -255,7 +273,8 @@ void boatinfo_pi::SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) {
 }
 
 void boatinfo_pi::SetNMEASentence(wxString& sentence) {
-  if (sentence.Find(wxT("XDR")) != wxNOT_FOUND) {
+  if (sentence.length() >= 6 && sentence[0] == wxT('$') &&
+      sentence.Mid(3, 3) == wxT("XDR")) {
     SetLabel(m_dataSourceValue, wxT("NMEA XDR"));
   }
 }
@@ -263,32 +282,38 @@ void boatinfo_pi::SetNMEASentence(wxString& sentence) {
 void boatinfo_pi::SetPluginMessage(wxString& message_id,
                                    wxString& message_body) {
   if (message_id == wxT("OCPN_CORE_SIGNALK")) {
-    SetLabel(m_dataSourceValue, wxT("Signal K"));
-    ParseSignalK(message_body);
+    if (ParseSignalK(message_body)) {
+      SetLabel(m_dataSourceValue, wxT("Signal K"));
+    }
   }
 }
 
-void boatinfo_pi::ParseSignalK(const wxString& message) {
+bool boatinfo_pi::ParseSignalK(const wxString& message) {
   wxJSONValue root;
   wxJSONReader reader;
   if (reader.Parse(message, &root) != 0 || !root.IsObject()) {
-    return;
+    return false;
   }
 
   if (root.HasMember(wxT("self")) && root[wxT("self")].IsString()) {
-    m_signalKSelf = wxT("vessels.") + root[wxT("self")].AsString();
+    const wxString self = NormalizeSignalKSelf(root[wxT("self")].AsString());
+    if (!self.IsEmpty()) {
+      m_signalKSelf = self;
+    }
   }
 
-  if (root.HasMember(wxT("context")) && root[wxT("context")].IsString() &&
-      !m_signalKSelf.IsEmpty() &&
-      root[wxT("context")].AsString() != m_signalKSelf) {
-    return;
+  if (root.HasMember(wxT("context")) && root[wxT("context")].IsString()) {
+    if (m_signalKSelf.IsEmpty() ||
+        root[wxT("context")].AsString() != m_signalKSelf) {
+      return false;
+    }
   }
 
   if (!root.HasMember(wxT("updates")) || !root[wxT("updates")].IsArray()) {
-    return;
+    return false;
   }
 
+  bool handled = false;
   wxJSONValue& updates = root[wxT("updates")];
   for (int i = 0; i < updates.Size(); ++i) {
     wxJSONValue& update = updates[i];
@@ -304,43 +329,52 @@ void boatinfo_pi::ParseSignalK(const wxString& message) {
           !item[wxT("path")].IsString() || !item.HasMember(wxT("value"))) {
         continue;
       }
-      UpdateSignalKPath(item[wxT("path")].AsString(), item[wxT("value")]);
+      handled =
+          UpdateSignalKPath(item[wxT("path")].AsString(),
+                            item[wxT("value")]) ||
+          handled;
     }
   }
 
-  if (m_panel) {
+  if (handled && m_panel) {
     m_panel->Layout();
   }
+  return handled;
 }
 
-void boatinfo_pi::UpdateSignalKPath(const wxString& path,
+bool boatinfo_pi::UpdateSignalKPath(const wxString& path,
                                     const wxJSONValue& value) {
   if (path == wxT("name") && value.IsString()) {
     SetLabel(m_nameValue, value.AsString());
-    return;
+    return true;
   }
   if (path == wxT("mmsi")) {
     if (value.IsString()) {
       SetLabel(m_mmsiValue, value.AsString());
+      return true;
     } else {
       double number = 0.0;
       if (JsonNumber(value, number)) {
         SetLabel(m_mmsiValue, wxString::Format(wxT("%.0f"), number));
+        return true;
       }
     }
-    return;
+    return false;
   }
   if (path == wxT("communication.callsignVhf") && value.IsString()) {
     SetLabel(m_callSignValue, value.AsString());
-    return;
+    return true;
   }
 
   double number = 0.0;
   if (!JsonNumber(value, number)) {
-    return;
+    return false;
   }
 
   if (path == wxT("electrical.batteries.service.capacity.stateOfCharge")) {
+    if (number < 0.0 || number > 1.0) {
+      return false;
+    }
     SetLabel(m_socValue, wxString::Format(wxT("%.0f %%"), number * 100.0));
   } else if (path ==
              wxT("electrical.batteries.service.capacity.timeRemaining")) {
@@ -354,10 +388,13 @@ void boatinfo_pi::UpdateSignalKPath(const wxString& path,
   } else if (path == wxT("electrical.batteries.starter.voltage")) {
     SetLabel(m_starterVoltageValue,
              wxString::Format(wxT("%.2f V"), number));
+  } else {
+    return false;
   }
+  return true;
 }
 
-bool boatinfo_pi::DeInit() {
+void boatinfo_pi::ClearControlPointers() {
   m_nameValue = nullptr;
   m_mmsiValue = nullptr;
   m_callSignValue = nullptr;
@@ -374,6 +411,10 @@ bool boatinfo_pi::DeInit() {
   m_powerValue = nullptr;
   m_starterVoltageValue = nullptr;
   m_dataSourceValue = nullptr;
+}
+
+bool boatinfo_pi::DeInit() {
+  ClearControlPointers();
   m_signalKSelf.clear();
 
   if (m_panel && m_auiManager) {

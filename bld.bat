@@ -1,4 +1,4 @@
-REM FE2  Testplugin
+REM FE2 BoatInfo
 
 
 REM  Requires wxWidgets setup

@@ -56,9 +56,6 @@ set(OCPN_API_VERSION_MAJOR "1")
 set(OCPN_API_VERSION_MINOR "18")
 
 set(WX_VER "32")
-set(WX_VER_PATCH "8")
-
-set(TP_COMMENT "  * BoatInfo generic own-vessel information plugin")
 
 set(PARENT "opencpn")
 
@@ -69,13 +66,12 @@ set(ALPHA "alpha")
 set(CLOUDSMITH_BASE_REPOSITORY "boatinfo")
 set(CLOUDSMITH_USER "opencpn")
 
+set(XML_SOURCE_URL "https://github.com/jkuhnen/boatinfo_pi")
 set(XML_INFO_URL
-    "https://github.com/jkuhnen/BenchyNav"
+    "https://github.com/jkuhnen/boatinfo_pi"
 )
 set(XML_SUMMARY ${SHORT_DESCRIPTION})
 set(XML_DESCRIPTION ${LONG_DESCRIPTION})
-
-option(PLUGIN_USE_SVG "Use SVG graphics" ON)
 
 set(CMAKE_CXX_STANDARD 11)
 
@@ -109,8 +105,6 @@ option(Plugin_CXX11 "Use c++11" OFF)
 
 include("PluginConfigure")
 
-add_definitions(-DUSE_S57)
-
 set(SRCS
     src/boatinfo_pi.cpp
 )
@@ -119,16 +113,9 @@ set(HDRS
     include/boatinfo_pi.h
 )
 
-add_definitions(-DPLUGIN_USE_SVG)
-
-if (QT_ANDROID)
-
-endif (QT_ANDROID)
-
 set(SRC ${SRCS} ${HDRS})
 
 include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/ocpninclude)
 
 target_sources(${PACKAGE_NAME} PUBLIC ${SRC})
 
@@ -148,11 +135,9 @@ if (NOT OCPN_FLATPAK_CONFIG)
 
 endif (NOT OCPN_FLATPAK_CONFIG)
 
-add_definitions(-DTIXML_USE_STL)
-
 if (UNIX
     AND NOT APPLE
-    AND NOT QT_ANDRIOD
+    AND NOT QT_ANDROID
     AND NOT OCPN_FLATPAK_CONFIG
     AND NOT OCPN_FLATPAK_BUILD
 )
@@ -179,7 +164,7 @@ if (UNIX
 endif (
   UNIX
   AND NOT APPLE
-  AND NOT QT_ANDRIOD
+  AND NOT QT_ANDROID
   AND NOT OCPN_FLATPAK_CONFIG
   AND NOT OCPN_FLATPAK_BUILD
 )

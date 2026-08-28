@@ -33,8 +33,9 @@ public:
 
 private:
   void ApplyHostStyle();
-  void ParseSignalK(const wxString& message);
-  void UpdateSignalKPath(const wxString& path, const wxJSONValue& value);
+  void ClearControlPointers();
+  bool ParseSignalK(const wxString& message);
+  bool UpdateSignalKPath(const wxString& path, const wxJSONValue& value);
 
   wxAuiManager* m_auiManager = nullptr;
   wxWindow* m_panel = nullptr;
