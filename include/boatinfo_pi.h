@@ -38,9 +38,7 @@ private:
   bool ParseSignalK(const wxString& message);
   bool UpdateSignalKPath(const wxString& path, const wxJSONValue& value);
 
-  wxBitmap m_dayPluginBitmap;
-  wxBitmap m_lowLightPluginBitmap;
-  PI_ColorScheme m_colorScheme = PI_GLOBAL_COLOR_SCHEME_DAY;
+  wxBitmap m_pluginBitmap;
 
   wxAuiManager* m_auiManager = nullptr;
   wxWindow* m_panel = nullptr;
