@@ -8,7 +8,9 @@ int boatinfo_pi::GetAPIVersionMajor() { return 1; }
 
 int boatinfo_pi::GetAPIVersionMinor() { return 18; }
 
-wxBitmap* boatinfo_pi::GetPlugInBitmap() { return nullptr; }
+wxBitmap* boatinfo_pi::GetPlugInBitmap() {
+  return opencpn_plugin::GetPlugInBitmap();
+}
 
 wxString boatinfo_pi::GetCommonName() { return wxT("BoatInfo"); }
 
