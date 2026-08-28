@@ -13,6 +13,7 @@ include(${wxWidgets_USE_FILE})
 
 add_library(boatinfo_pi SHARED
     src/boatinfo_pi.cpp
+    src/boatinfo_metadata.cpp
     include/boatinfo_pi.h
 )
 
