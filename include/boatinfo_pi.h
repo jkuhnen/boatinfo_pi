@@ -1,5 +1,5 @@
-#ifndef BENCHYNAV_PI_H
-#define BENCHYNAV_PI_H
+#ifndef BOATINFO_PI_H
+#define BOATINFO_PI_H
 
 #include "ocpn_plugin.h"
 
@@ -7,37 +7,37 @@
 
 class wxJSONValue;
 class wxStaticText;
+class wxWindow;
 
-class testplugin_pi : public opencpn_plugin_118 {
+class boatinfo_pi : public opencpn_plugin_118 {
 public:
-  testplugin_pi(void* ppimgr);
-  ~testplugin_pi();
+  explicit boatinfo_pi(void* ppimgr);
+  ~boatinfo_pi() override;
 
-  int Init();
-  bool DeInit();
+  int Init() override;
+  bool DeInit() override;
 
   void SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) override;
   void SetNMEASentence(wxString& sentence) override;
   void SetPluginMessage(wxString& message_id, wxString& message_body) override;
+  void SetColorScheme(PI_ColorScheme cs) override;
 
-  int GetPlugInVersionMajor();
-  int GetPlugInVersionMinor();
-
-  int GetAPIVersionMajor();
-  int GetAPIVersionMinor();
-
-  wxBitmap* GetPlugInBitmap();
-
-  wxString GetCommonName();
-  wxString GetShortDescription();
-  wxString GetLongDescription();
+  int GetPlugInVersionMajor() override;
+  int GetPlugInVersionMinor() override;
+  int GetAPIVersionMajor() override;
+  int GetAPIVersionMinor() override;
+  wxBitmap* GetPlugInBitmap() override;
+  wxString GetCommonName() override;
+  wxString GetShortDescription() override;
+  wxString GetLongDescription() override;
 
 private:
+  void ApplyHostStyle();
   void ParseSignalK(const wxString& message);
   void UpdateSignalKPath(const wxString& path, const wxJSONValue& value);
 
   wxAuiManager* m_auiManager = nullptr;
-  wxWindow* m_helloPanel = nullptr;
+  wxWindow* m_panel = nullptr;
 
   wxStaticText* m_nameValue = nullptr;
   wxStaticText* m_mmsiValue = nullptr;
@@ -56,7 +56,7 @@ private:
   wxStaticText* m_voltageValue = nullptr;
   wxStaticText* m_powerValue = nullptr;
   wxStaticText* m_starterVoltageValue = nullptr;
-  wxStaticText* m_signalKStatusValue = nullptr;
+  wxStaticText* m_dataSourceValue = nullptr;
 
   wxString m_signalKSelf;
 };
