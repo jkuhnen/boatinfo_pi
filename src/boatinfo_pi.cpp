@@ -1,5 +1,4 @@
 #include "boatinfo_pi.h"
-#include "version.h"
 
 #include <cmath>
 
@@ -426,26 +425,4 @@ bool boatinfo_pi::DeInit() {
 
   m_auiManager = nullptr;
   return true;
-}
-
-int boatinfo_pi::GetAPIVersionMajor() { return OCPN_API_VERSION_MAJOR; }
-int boatinfo_pi::GetAPIVersionMinor() { return OCPN_API_VERSION_MINOR; }
-int boatinfo_pi::GetPlugInVersionMajor() { return PLUGIN_VERSION_MAJOR; }
-int boatinfo_pi::GetPlugInVersionMinor() { return PLUGIN_VERSION_MINOR; }
-
-wxBitmap* boatinfo_pi::GetPlugInBitmap() {
-  static wxBitmap bitmap(32, 32);
-  return &bitmap;
-}
-
-wxString boatinfo_pi::GetCommonName() { return wxT("BoatInfo"); }
-
-wxString boatinfo_pi::GetShortDescription() {
-  return wxT("Own-vessel navigation and onboard system information");
-}
-
-wxString boatinfo_pi::GetLongDescription() {
-  return wxT(
-      "Displays own-vessel identity, navigation and electrical information "
-      "from OpenCPN data sources in a compact docked panel.");
 }
