@@ -1,4 +1,4 @@
-#include "testplugin_pi.h"
+#include "boatinfo_pi.h"
 #include "version.h"
 
 #include <cmath>
@@ -6,13 +6,14 @@
 #include <wx/datetime.h>
 #include <wx/jsonreader.h>
 #include <wx/jsonval.h>
+#include <wx/settings.h>
 #include <wx/sizer.h>
 #include <wx/stattext.h>
 
 #ifdef _WIN32
-#define BENCHYNAV_EXPORT __declspec(dllexport)
+#define BOATINFO_EXPORT __declspec(dllexport)
 #else
-#define BENCHYNAV_EXPORT
+#define BOATINFO_EXPORT
 #endif
 
 namespace {
@@ -74,75 +75,70 @@ wxString FormatRemaining(double seconds) {
 }
 }  // namespace
 
-extern "C" BENCHYNAV_EXPORT opencpn_plugin* create_pi(void* ppimgr) {
-  return new testplugin_pi(ppimgr);
+extern "C" BOATINFO_EXPORT opencpn_plugin* create_pi(void* ppimgr) {
+  return new boatinfo_pi(ppimgr);
 }
 
-extern "C" BENCHYNAV_EXPORT void destroy_pi(opencpn_plugin* p) { delete p; }
+extern "C" BOATINFO_EXPORT void destroy_pi(opencpn_plugin* plugin) {
+  delete plugin;
+}
 
-testplugin_pi::testplugin_pi(void* ppimgr) : opencpn_plugin_118(ppimgr) {}
+boatinfo_pi::boatinfo_pi(void* ppimgr) : opencpn_plugin_118(ppimgr) {}
+boatinfo_pi::~boatinfo_pi() = default;
 
-testplugin_pi::~testplugin_pi() {}
-
-int testplugin_pi::Init() {
+int boatinfo_pi::Init() {
   m_auiManager = GetFrameAuiManager();
+  if (!m_auiManager || !m_auiManager->GetManagedWindow()) {
+    return 0;
+  }
+
   wxWindow* auiParent = m_auiManager->GetManagedWindow();
+  m_panel = new wxWindow(auiParent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                         wxFULL_REPAINT_ON_RESIZE);
 
-  m_helloPanel = new wxWindow(auiParent, wxID_ANY, wxDefaultPosition,
-                              wxDefaultSize, wxFULL_REPAINT_ON_RESIZE);
-
-  wxColour panelBackground;
-  GetGlobalColor(wxT("DILG1"), &panelBackground);
-  m_helloPanel->SetBackgroundColour(panelBackground);
-
-  wxColour panelText;
-  GetGlobalColor(wxT("DILG3"), &panelText);
-  m_helloPanel->SetForegroundColour(panelText);
+  const int gap = m_panel->FromDIP(8);
+  const int sectionGap = m_panel->FromDIP(12);
+  const int outer = m_panel->FromDIP(14);
+  const int labelGap = m_panel->FromDIP(18);
 
   wxBoxSizer* sizer = new wxBoxSizer(wxVERTICAL);
 
-  wxStaticText* title =
-      new wxStaticText(m_helloPanel, wxID_ANY, wxT("BenchyNav"));
-  title->SetForegroundColour(panelText);
+  wxStaticText* title = new wxStaticText(m_panel, wxID_ANY, wxT("BoatInfo"));
   wxFont titleFont = title->GetFont();
   titleFont.SetWeight(wxFONTWEIGHT_BOLD);
   titleFont.SetPointSize(titleFont.GetPointSize() + 2);
   title->SetFont(titleFont);
-  sizer->Add(title, 0, wxALL, 15);
+  sizer->Add(title, 0, wxLEFT | wxRIGHT | wxTOP, outer);
+  sizer->AddSpacer(sectionGap);
 
   auto addSectionTitle = [&](const wxString& text) {
-    wxStaticText* section = new wxStaticText(m_helloPanel, wxID_ANY, text);
-    section->SetForegroundColour(panelText);
+    wxStaticText* section = new wxStaticText(m_panel, wxID_ANY, text);
     wxFont sectionFont = section->GetFont();
     sectionFont.SetWeight(wxFONTWEIGHT_BOLD);
     section->SetFont(sectionFont);
-    sizer->Add(section, 0, wxLEFT | wxRIGHT | wxTOP, 15);
+    sizer->Add(section, 0, wxLEFT | wxRIGHT | wxTOP, outer);
   };
 
   auto addRow = [&](wxFlexGridSizer* grid, const wxString& label,
                     const wxString& value) -> wxStaticText* {
-    wxStaticText* labelText =
-        new wxStaticText(m_helloPanel, wxID_ANY, label);
-    labelText->SetForegroundColour(panelText);
+    wxStaticText* labelText = new wxStaticText(m_panel, wxID_ANY, label);
     grid->Add(labelText, 0, wxALIGN_LEFT | wxALIGN_CENTER_VERTICAL);
 
-    wxStaticText* valueText =
-        new wxStaticText(m_helloPanel, wxID_ANY, value);
-    valueText->SetForegroundColour(panelText);
+    wxStaticText* valueText = new wxStaticText(m_panel, wxID_ANY, value);
     grid->Add(valueText, 0, wxALIGN_LEFT | wxALIGN_CENTER_VERTICAL);
     return valueText;
   };
 
-  addSectionTitle(wxT("VESSEL"));
-  wxFlexGridSizer* vesselGrid = new wxFlexGridSizer(2, 8, 20);
+  addSectionTitle(wxT("Vessel"));
+  wxFlexGridSizer* vesselGrid = new wxFlexGridSizer(2, gap, labelGap);
   vesselGrid->AddGrowableCol(1, 1);
   m_nameValue = addRow(vesselGrid, wxT("Name"), wxT("---"));
   m_mmsiValue = addRow(vesselGrid, wxT("MMSI"), wxT("---"));
-  m_callSignValue = addRow(vesselGrid, wxT("Call Sign"), wxT("---"));
-  sizer->Add(vesselGrid, 0, wxEXPAND | wxALL, 15);
+  m_callSignValue = addRow(vesselGrid, wxT("Call sign"), wxT("---"));
+  sizer->Add(vesselGrid, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, outer);
 
-  addSectionTitle(wxT("NAVIGATION"));
-  wxFlexGridSizer* navGrid = new wxFlexGridSizer(2, 8, 20);
+  addSectionTitle(wxT("Navigation"));
+  wxFlexGridSizer* navGrid = new wxFlexGridSizer(2, gap, labelGap);
   navGrid->AddGrowableCol(1, 1);
   m_latitudeValue = addRow(navGrid, wxT("Latitude"), wxT("---"));
   m_longitudeValue = addRow(navGrid, wxT("Longitude"), wxT("---"));
@@ -150,48 +146,82 @@ int testplugin_pi::Init() {
   m_sogValue = addRow(navGrid, wxT("SOG"), wxT("--- kn"));
   m_dateValue = addRow(navGrid, wxT("Date"), wxT("--.--.----"));
   m_timeValue = addRow(navGrid, wxT("Time UTC"), wxT("--:--:--"));
-  sizer->Add(navGrid, 0, wxEXPAND | wxALL, 15);
+  sizer->Add(navGrid, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, outer);
 
-  addSectionTitle(wxT("BATTERY"));
-  wxFlexGridSizer* batteryGrid = new wxFlexGridSizer(2, 8, 20);
-  batteryGrid->AddGrowableCol(1, 1);
-  m_socValue = addRow(batteryGrid, wxT("State"), wxT("--- %"));
-  m_remainingValue = addRow(batteryGrid, wxT("Remaining"), wxT("---"));
-  m_currentValue = addRow(batteryGrid, wxT("Current"), wxT("--- A"));
-  m_voltageValue = addRow(batteryGrid, wxT("Voltage"), wxT("--- V"));
-  m_powerValue = addRow(batteryGrid, wxT("Power"), wxT("--- W"));
-  m_starterVoltageValue = addRow(batteryGrid, wxT("Starter"), wxT("--- V"));
-  m_signalKStatusValue = addRow(batteryGrid, wxT("Source"), wxT("waiting"));
-  sizer->Add(batteryGrid, 0, wxEXPAND | wxALL, 15);
+  addSectionTitle(wxT("Electrical"));
+  wxFlexGridSizer* electricalGrid = new wxFlexGridSizer(2, gap, labelGap);
+  electricalGrid->AddGrowableCol(1, 1);
+  m_socValue = addRow(electricalGrid, wxT("Service SOC"), wxT("--- %"));
+  m_remainingValue =
+      addRow(electricalGrid, wxT("Time remaining"), wxT("---"));
+  m_currentValue = addRow(electricalGrid, wxT("Service current"), wxT("--- A"));
+  m_voltageValue = addRow(electricalGrid, wxT("Service voltage"), wxT("--- V"));
+  m_powerValue = addRow(electricalGrid, wxT("Service power"), wxT("--- W"));
+  m_starterVoltageValue =
+      addRow(electricalGrid, wxT("Starter voltage"), wxT("--- V"));
+  m_dataSourceValue = addRow(electricalGrid, wxT("Data source"), wxT("Waiting"));
+  sizer->Add(electricalGrid, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, outer);
 
-  m_helloPanel->SetSizer(sizer);
+  m_panel->SetSizer(sizer);
+  ApplyHostStyle();
 
   wxAuiPaneInfo pane;
-  pane.Name(wxT("BenchyNavPanel"))
-      .Caption(wxT("BenchyNav"))
+  pane.Name(wxT("BoatInfoPanel"))
+      .Caption(wxT("BoatInfo"))
       .Right()
-      .BestSize(300, -1)
-      .MinSize(200, -1)
+      .BestSize(m_panel->FromDIP(320), -1)
+      .MinSize(m_panel->FromDIP(220), -1)
       .Floatable(false)
       .RightDockable(true)
-      .LeftDockable(false)
+      .LeftDockable(true)
       .TopDockable(false)
       .BottomDockable(false)
       .CloseButton(true)
       .Show(true);
 
-  m_auiManager->AddPane(m_helloPanel, pane);
+  m_auiManager->AddPane(m_panel, pane);
   m_auiManager->Update();
 
   return USES_AUI_MANAGER | WANTS_NMEA_EVENTS | WANTS_NMEA_SENTENCES |
          WANTS_PLUGIN_MESSAGING;
 }
 
-void testplugin_pi::SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) {
-  SetLabel(m_latitudeValue,
-           FormatCoordinate(pfix.Lat, wxT('N'), wxT('S')));
-  SetLabel(m_longitudeValue,
-           FormatCoordinate(pfix.Lon, wxT('E'), wxT('W')));
+void boatinfo_pi::ApplyHostStyle() {
+  if (!m_panel) {
+    return;
+  }
+
+  wxColour background;
+  wxColour text;
+  if (!GetGlobalColor(wxT("DILG1"), &background)) {
+    background = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOW);
+  }
+  if (!GetGlobalColor(wxT("DILG3"), &text)) {
+    text = wxSystemSettings::GetColour(wxSYS_COLOUR_WINDOWTEXT);
+  }
+
+  m_panel->SetBackgroundColour(background);
+  m_panel->SetForegroundColour(text);
+
+  const wxWindowList& children = m_panel->GetChildren();
+  for (wxWindowList::compatibility_iterator node = children.GetFirst(); node;
+       node = node->GetNext()) {
+    wxWindow* child = node->GetData();
+    child->SetBackgroundColour(background);
+    child->SetForegroundColour(text);
+  }
+
+  m_panel->Refresh();
+}
+
+void boatinfo_pi::SetColorScheme(PI_ColorScheme cs) {
+  (void)cs;
+  ApplyHostStyle();
+}
+
+void boatinfo_pi::SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) {
+  SetLabel(m_latitudeValue, FormatCoordinate(pfix.Lat, wxT('N'), wxT('S')));
+  SetLabel(m_longitudeValue, FormatCoordinate(pfix.Lon, wxT('E'), wxT('W')));
 
   if (std::isfinite(pfix.Cog)) {
     double cog = std::fmod(pfix.Cog, 360.0);
@@ -219,26 +249,26 @@ void testplugin_pi::SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) {
     SetLabel(m_timeValue, wxT("--:--:--"));
   }
 
-  if (m_helloPanel) {
-    m_helloPanel->Layout();
+  if (m_panel) {
+    m_panel->Layout();
   }
 }
 
-void testplugin_pi::SetNMEASentence(wxString& sentence) {
+void boatinfo_pi::SetNMEASentence(wxString& sentence) {
   if (sentence.Find(wxT("XDR")) != wxNOT_FOUND) {
-    SetLabel(m_signalKStatusValue, wxT("NMEA XDR"));
+    SetLabel(m_dataSourceValue, wxT("NMEA XDR"));
   }
 }
 
-void testplugin_pi::SetPluginMessage(wxString& message_id,
-                                     wxString& message_body) {
+void boatinfo_pi::SetPluginMessage(wxString& message_id,
+                                   wxString& message_body) {
   if (message_id == wxT("OCPN_CORE_SIGNALK")) {
-    SetLabel(m_signalKStatusValue, wxT("Signal K"));
+    SetLabel(m_dataSourceValue, wxT("Signal K"));
     ParseSignalK(message_body);
   }
 }
 
-void testplugin_pi::ParseSignalK(const wxString& message) {
+void boatinfo_pi::ParseSignalK(const wxString& message) {
   wxJSONValue root;
   wxJSONReader reader;
   if (reader.Parse(message, &root) != 0 || !root.IsObject()) {
@@ -278,13 +308,13 @@ void testplugin_pi::ParseSignalK(const wxString& message) {
     }
   }
 
-  if (m_helloPanel) {
-    m_helloPanel->Layout();
+  if (m_panel) {
+    m_panel->Layout();
   }
 }
 
-void testplugin_pi::UpdateSignalKPath(const wxString& path,
-                                      const wxJSONValue& value) {
+void boatinfo_pi::UpdateSignalKPath(const wxString& path,
+                                    const wxJSONValue& value) {
   if (path == wxT("name") && value.IsString()) {
     SetLabel(m_nameValue, value.AsString());
     return;
@@ -327,7 +357,7 @@ void testplugin_pi::UpdateSignalKPath(const wxString& path,
   }
 }
 
-bool testplugin_pi::DeInit() {
+bool boatinfo_pi::DeInit() {
   m_nameValue = nullptr;
   m_mmsiValue = nullptr;
   m_callSignValue = nullptr;
@@ -343,12 +373,13 @@ bool testplugin_pi::DeInit() {
   m_voltageValue = nullptr;
   m_powerValue = nullptr;
   m_starterVoltageValue = nullptr;
-  m_signalKStatusValue = nullptr;
+  m_dataSourceValue = nullptr;
+  m_signalKSelf.clear();
 
-  if (m_helloPanel && m_auiManager) {
-    m_auiManager->DetachPane(m_helloPanel);
-    m_helloPanel->Destroy();
-    m_helloPanel = nullptr;
+  if (m_panel && m_auiManager) {
+    m_auiManager->DetachPane(m_panel);
+    m_panel->Destroy();
+    m_panel = nullptr;
     m_auiManager->Update();
   }
 
@@ -356,24 +387,24 @@ bool testplugin_pi::DeInit() {
   return true;
 }
 
-int testplugin_pi::GetAPIVersionMajor() { return OCPN_API_VERSION_MAJOR; }
-int testplugin_pi::GetAPIVersionMinor() { return OCPN_API_VERSION_MINOR; }
-int testplugin_pi::GetPlugInVersionMajor() { return PLUGIN_VERSION_MAJOR; }
-int testplugin_pi::GetPlugInVersionMinor() { return PLUGIN_VERSION_MINOR; }
+int boatinfo_pi::GetAPIVersionMajor() { return OCPN_API_VERSION_MAJOR; }
+int boatinfo_pi::GetAPIVersionMinor() { return OCPN_API_VERSION_MINOR; }
+int boatinfo_pi::GetPlugInVersionMajor() { return PLUGIN_VERSION_MAJOR; }
+int boatinfo_pi::GetPlugInVersionMinor() { return PLUGIN_VERSION_MINOR; }
 
-wxBitmap* testplugin_pi::GetPlugInBitmap() {
+wxBitmap* boatinfo_pi::GetPlugInBitmap() {
   static wxBitmap bitmap(32, 32);
   return &bitmap;
 }
 
-wxString testplugin_pi::GetCommonName() { return wxT("BenchyNav"); }
+wxString boatinfo_pi::GetCommonName() { return wxT("BoatInfo"); }
 
-wxString testplugin_pi::GetShortDescription() {
-  return wxT("Benchy vessel information and navigation data");
+wxString boatinfo_pi::GetShortDescription() {
+  return wxT("Own-vessel navigation and onboard system information");
 }
 
-wxString testplugin_pi::GetLongDescription() {
+wxString boatinfo_pi::GetLongDescription() {
   return wxT(
-      "Displays Benchy vessel information and navigation data "
-      "in a docked OpenCPN panel.");
+      "Displays own-vessel identity, navigation and electrical information "
+      "from OpenCPN data sources in a compact docked panel.");
 }

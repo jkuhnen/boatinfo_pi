@@ -1,32 +1,7 @@
 # ---------------------------------------------------------------------------
-# Frontend2 Author:   jongough aka. Jon Gough Copyright: License:  wxWidgets
-# License
+# Frontend2 Author: Jon Gough. BoatInfo retains the proven FE2 build family.
+# License: GPLv3+
 # ---------------------------------------------------------------------------
-# - Copyright (C)  by Jon Gough                            *
-# - License:     GPLv3+
-# - This program is free software; you can redistribute it and/or modify  *
-# - it under the terms of the GNU General Public License as published by  *
-# - the Free Software Foundation; either version 2 of the License, or     *
-# - (at your option) any later version.                                   *
-# - *
-# - This program is distributed in the hope that it will be useful,       *
-# - but WITHOUT ANY WARRANTY; without even the implied warranty of        *
-# - MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the         *
-# - GNU General Public License for more details.                          *
-# - *
-# - You should have received a copy of the GNU General Public License     *
-# - along with this program; if not, write to the                         *
-# - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxx,                                       *
-# - xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx                                       *
-# -----------------------------------------------------------------------------
-# Frontend2 Author: Jon Gough Testplugin(TP) v1.0.362.0 19/06/2026 DD/MM/YYYY
-# format buildCI:yes useODAPI:yes validateJSON:yes
-# ---------------------------------------------------------------------------
-# -- When changing this file do NOT change the order of the sections.    -- ##
-# -- Make changes only between the section blocks identified             -- ##
-# -- The whole configuration process relies on this sequence for success.-- ##
-#
-# -- Modify section below to include all the details for your plugin.    -- ##
 
 set(CMLOC "CMakeLists: ")
 
@@ -58,23 +33,23 @@ endif (COMMAND cmake_policy)
 
 set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
 
-set(VERBOSE_NAME "BenchyNav")
-set(COMMON_NAME "BenchyNav")
-set(TITLE_NAME "testplugin")
+set(VERBOSE_NAME "BoatInfo")
+set(COMMON_NAME "BoatInfo")
+set(TITLE_NAME "boatinfo")
 set(PACKAGE_CONTACT "Johannes Kuhnen")
-set(PACKAGE "testplugin")
+set(PACKAGE "boatinfo")
 set(SHORT_DESCRIPTION
-    "Benchy vessel information and navigation data"
+    "Own-vessel navigation and onboard system information"
 )
 set(LONG_DESCRIPTION
-    "Displays Benchy vessel information and navigation data in a docked OpenCPN panel."
+    "Displays own-vessel identity, navigation and electrical information from OpenCPN data sources in a compact docked panel."
 )
 
 set(VERSION_MAJOR "1")
-set(VERSION_MINOR "0")
-set(VERSION_PATCH "372")
+set(VERSION_MINOR "1")
+set(VERSION_PATCH "0")
 set(VERSION_TWEAK "0")
-set(VERSION_DATE "14/08/2026") # DD/MM/YYYY format
+set(VERSION_DATE "28/08/2026") # DD/MM/YYYY format
 set(OCPN_MIN_VERSION "ov58")
 
 set(OCPN_API_VERSION_MAJOR "1")
@@ -83,19 +58,19 @@ set(OCPN_API_VERSION_MINOR "18")
 set(WX_VER "32")
 set(WX_VER_PATCH "8")
 
-set(TP_COMMENT "  * Release using CI")
+set(TP_COMMENT "  * BoatInfo generic own-vessel information plugin")
 
 set(PARENT "opencpn")
 
-set(PROD "prod") # Standard Repos
-set(BETA "beta") # Standard Repos
-set(ALPHA "alpha") # Standard Repos
+set(PROD "prod")
+set(BETA "beta")
+set(ALPHA "alpha")
 
-set(CLOUDSMITH_BASE_REPOSITORY "testplugin") # without the pi
+set(CLOUDSMITH_BASE_REPOSITORY "boatinfo")
 set(CLOUDSMITH_USER "opencpn")
 
 set(XML_INFO_URL
-    "https://opencpn.org/wiki/dokuwiki/doku.php?id=opencpn:opencpn_user_manual:plugins:safety:odraw1.6_pi"
+    "https://github.com/jkuhnen/BenchyNav"
 )
 set(XML_SUMMARY ${SHORT_DESCRIPTION})
 set(XML_DESCRIPTION ${LONG_DESCRIPTION})
@@ -105,7 +80,7 @@ option(PLUGIN_USE_SVG "Use SVG graphics" ON)
 set(CMAKE_CXX_STANDARD 11)
 
 set(USE_LOCAL_GLU FALSE)
-set(OpenGL_GL_PREFERENCE "LEGACY") # not operational
+set(OpenGL_GL_PREFERENCE "LEGACY")
 
 option(USE_GL "Enable OpenGL support" ON)
 message(STATUS "${CMLOC}USE_GL: ${USE_GL}")
@@ -137,11 +112,11 @@ include("PluginConfigure")
 add_definitions(-DUSE_S57)
 
 set(SRCS
-    src/testplugin_pi.cpp
+    src/boatinfo_pi.cpp
 )
 
 set(HDRS
-    include/testplugin_pi.h
+    include/boatinfo_pi.h
 )
 
 add_definitions(-DPLUGIN_USE_SVG)
@@ -183,10 +158,8 @@ if (UNIX
 )
   if (OD_JSON_SCHEMA_VALIDATOR)
     set(lib_name lib${PACKAGE_NAME}.so)
-    message(STATUS "${CMLOC}lib-name: ${lib_name}")
     find_file(elfedit elfedit)
     if (NOT (${elfedit} STREQUAL "elfedit-NOTFOUND"))
-      message(STATUS "${CMLOC}Will ensure OS/ABI is set to 0 to match OCPN")
       add_custom_command(
         TARGET ${PACKAGE_NAME}
         POST_BUILD
