@@ -15,9 +15,7 @@ wxBitmap RenderEmbeddedSvg(const char* svg) {
 
 boatinfo_pi::boatinfo_pi(void* ppimgr)
     : opencpn_plugin_118(ppimgr),
-      m_dayPluginBitmap(RenderEmbeddedSvg(boatinfo_icon_data::kDaySvg)),
-      m_lowLightPluginBitmap(RenderEmbeddedSvg(boatinfo_icon_data::kWhiteSvg)) {
-}
+      m_pluginBitmap(RenderEmbeddedSvg(boatinfo_icon_data::kDaySvg)) {}
 
 int boatinfo_pi::GetPlugInVersionMajor() { return BOATINFO_VERSION_MAJOR; }
 
@@ -27,13 +25,7 @@ int boatinfo_pi::GetAPIVersionMajor() { return BOATINFO_API_VERSION_MAJOR; }
 
 int boatinfo_pi::GetAPIVersionMinor() { return BOATINFO_API_VERSION_MINOR; }
 
-wxBitmap* boatinfo_pi::GetPlugInBitmap() {
-  if (m_colorScheme == PI_GLOBAL_COLOR_SCHEME_DUSK ||
-      m_colorScheme == PI_GLOBAL_COLOR_SCHEME_NIGHT) {
-    return &m_lowLightPluginBitmap;
-  }
-  return &m_dayPluginBitmap;
-}
+wxBitmap* boatinfo_pi::GetPlugInBitmap() { return &m_pluginBitmap; }
 
 wxString boatinfo_pi::GetCommonName() { return wxT("BoatInfo"); }
 
