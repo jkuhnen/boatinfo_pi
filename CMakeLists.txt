@@ -1,188 +1,101 @@
-# ---------------------------------------------------------------------------
-# Frontend2 Author: Jon Gough. BoatInfo retains the proven FE2 build family.
-# License: GPLv3+
-# ---------------------------------------------------------------------------
-
-set(CMLOC "CMakeLists: ")
-
 cmake_minimum_required(VERSION 3.15)
-if(COMMAND cmake_policy)
-  if (POLICY CMP0043)
-    cmake_policy(SET CMP0043 NEW)
-  endif (POLICY CMP0043)
-  cmake_policy(SET CMP0048 NEW)
-  if (POLICY CMP0068)
-    cmake_policy(SET CMP0068 NEW)
-  endif (POLICY CMP0068)
-  if (POLICY CMP0076)
-    cmake_policy(SET CMP0076 NEW)
-  endif (POLICY CMP0076)
-  if (POLICY CMP0077)
-    cmake_policy(SET CMP0077 NEW)
-  endif (POLICY CMP0077)
-  if (POLICY CMP0079)
-    cmake_policy(SET CMP0079 NEW)
-  endif (POLICY CMP0079)
-  if (POLICY CMP0175)
-    cmake_policy(SET CMP0175 NEW)
-  endif (POLICY CMP0175)
-  if (POLICY CMP0177)
-    cmake_policy(SET CMP0177 NEW)
-  endif (POLICY CMP0177)
-endif (COMMAND cmake_policy)
-
-set(CMAKE_BUILD_WITH_INSTALL_RPATH ON)
-
-set(VERBOSE_NAME "BoatInfo")
-set(COMMON_NAME "BoatInfo")
-set(TITLE_NAME "boatinfo")
-set(PACKAGE_CONTACT "Johannes Kuhnen")
-set(PACKAGE "boatinfo")
-set(SHORT_DESCRIPTION
-    "Own-vessel navigation and onboard system information"
-)
-set(LONG_DESCRIPTION
-    "Displays own-vessel identity, navigation and electrical information from OpenCPN data sources in a compact docked panel."
-)
-
-set(VERSION_MAJOR "1")
-set(VERSION_MINOR "1")
-set(VERSION_PATCH "0")
-set(VERSION_TWEAK "0")
-set(VERSION_DATE "28/08/2026") # DD/MM/YYYY format
-set(OCPN_MIN_VERSION "ov58")
-
-set(OCPN_API_VERSION_MAJOR "1")
-set(OCPN_API_VERSION_MINOR "18")
-
-set(WX_VER "32")
-
-set(PARENT "opencpn")
-
-set(PROD "prod")
-set(BETA "beta")
-set(ALPHA "alpha")
-
-set(CLOUDSMITH_BASE_REPOSITORY "boatinfo")
-set(CLOUDSMITH_USER "opencpn")
-
-set(XML_SOURCE_URL "https://github.com/jkuhnen/boatinfo_pi")
-set(XML_INFO_URL
-    "https://github.com/jkuhnen/boatinfo_pi"
-)
-set(XML_SUMMARY ${SHORT_DESCRIPTION})
-set(XML_DESCRIPTION ${LONG_DESCRIPTION})
+project(boatinfo VERSION 1.1.0.0 LANGUAGES CXX)
 
 set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-set(USE_LOCAL_GLU FALSE)
-set(OpenGL_GL_PREFERENCE "LEGACY")
+set(PACKAGE_NAME "boatinfo_pi")
+set(PACKAGE_VERSION "${PROJECT_VERSION}")
+set(OCPN_API_VERSION "1.18")
 
-option(USE_GL "Enable OpenGL support" ON)
-message(STATUS "${CMLOC}USE_GL: ${USE_GL}")
+find_package(wxWidgets REQUIRED COMPONENTS base core aui)
+include(${wxWidgets_USE_FILE})
 
-if ("${CMAKE_BUILD_TYPE}" STREQUAL "")
-  set(CMAKE_BUILD_TYPE
-      "Release"
-      CACHE STRING "Choose the type of build" FORCE
-  )
-endif ("${CMAKE_BUILD_TYPE}" STREQUAL "")
-set_property(
-  CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS "" "Debug" "Release" "RelWithDebInfo"
-                                  "MinSizeRel"
-)
-message(STATUS "${CMLOC}Build type: ${CMAKE_BUILD_TYPE}")
-
-project(${PACKAGE})
-
-set(CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
-
-include("PluginSetup")
-
-set(CMAKE_VERBOSE_MAKEFILE "Activate verbose mode for make files" ON)
-
-option(Plugin_CXX11 "Use c++11" OFF)
-
-include("PluginConfigure")
-
-set(SRCS
+add_library(boatinfo_pi SHARED
     src/boatinfo_pi.cpp
-)
-
-set(HDRS
     include/boatinfo_pi.h
 )
 
-set(SRC ${SRCS} ${HDRS})
-
-include_directories(BEFORE ${PROJECT_SOURCE_DIR}/include)
-
-target_sources(${PACKAGE_NAME} PUBLIC ${SRC})
-
-if (NOT OCPN_FLATPAK_CONFIG)
-  message(STATUS "${CMLOC}Adding target link libraries to ${PACKAGE_NAME}")
-
-  if (WIN32)
-    add_subdirectory(opencpn-libs/WindowsHeaders)
-    target_link_libraries(${PACKAGE_NAME} windows::headers)
-  endif (WIN32)
-
-  add_subdirectory(opencpn-libs/api-${OCPN_API_VERSION_MINOR})
-  target_link_libraries(${PACKAGE_NAME} ocpn::api)
-
-  add_subdirectory(opencpn-libs/wxJSON)
-  target_link_libraries(${PACKAGE_NAME} ocpn::wxjson)
-
-endif (NOT OCPN_FLATPAK_CONFIG)
-
-if (UNIX
-    AND NOT APPLE
-    AND NOT QT_ANDROID
-    AND NOT OCPN_FLATPAK_CONFIG
-    AND NOT OCPN_FLATPAK_BUILD
-)
-  if (OD_JSON_SCHEMA_VALIDATOR)
-    set(lib_name lib${PACKAGE_NAME}.so)
-    find_file(elfedit elfedit)
-    if (NOT (${elfedit} STREQUAL "elfedit-NOTFOUND"))
-      add_custom_command(
-        TARGET ${PACKAGE_NAME}
-        POST_BUILD
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        COMMENT " Running post build action on ${lib_name}."
-        COMMAND
-          sh -c
-          'elfedit --input-osabi=Linux --output-osabi=none ${lib_name} || (echo 0) '
-      )
-    else (NOT (${elfedit} STREQUAL "elfedit-NOTFOUND"))
-      message(
-        STATUS
-          "${CMLOC}Cannot correct OS/ABI to match OpenCPN if it is generated incorrectly. Package binutils needed"
-      )
-    endif (NOT (${elfedit} STREQUAL "elfedit-NOTFOUND"))
-  endif (OD_JSON_SCHEMA_VALIDATOR)
-endif (
-  UNIX
-  AND NOT APPLE
-  AND NOT QT_ANDROID
-  AND NOT OCPN_FLATPAK_CONFIG
-  AND NOT OCPN_FLATPAK_BUILD
+target_include_directories(boatinfo_pi PRIVATE
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-if (QT_ANDROID)
-  include_directories(BEFORE ${qt_android_include})
-endif (QT_ANDROID)
-
-include("PluginInstall")
-include("PluginLocalization")
-include("PluginPackage")
-
-message(STATUS "${CMLOC}include directories: ")
-get_property(
-  dirs
-  DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
-  PROPERTY INCLUDE_DIRECTORIES
+add_subdirectory(opencpn-libs/api-18)
+add_subdirectory(opencpn-libs/wxJSON)
+target_link_libraries(boatinfo_pi PRIVATE
+    ocpn::api
+    ocpn::wxjson
+    ${wxWidgets_LIBRARIES}
 )
-foreach (dir ${dirs})
-  message(STATUS "${CMLOC}dir='${dir}'")
-endforeach ()
+
+if(WIN32)
+  add_subdirectory(opencpn-libs/WindowsHeaders)
+  target_link_libraries(boatinfo_pi PRIVATE windows::headers)
+endif()
+
+if(MSVC)
+  target_compile_definitions(boatinfo_pi PRIVATE
+      MAKING_PLUGIN
+      __MSVC__
+      _CRT_NONSTDC_NO_DEPRECATE
+      _CRT_SECURE_NO_DEPRECATE
+  )
+  target_compile_options(boatinfo_pi PRIVATE /utf-8)
+endif()
+
+set_target_properties(boatinfo_pi PROPERTIES
+    PREFIX ""
+    OUTPUT_NAME "boatinfo_pi"
+)
+
+if(MSVC)
+  set(OCPN_PACKAGE_TARGET "msvc-wx32")
+  set(OCPN_BUILD_TARGET "msvc")
+else()
+  set(OCPN_PACKAGE_TARGET "unknown")
+  set(OCPN_BUILD_TARGET "unknown")
+endif()
+
+if(CMAKE_VS_PLATFORM_NAME)
+  string(TOLOWER "${CMAKE_VS_PLATFORM_NAME}" _platform_name)
+  if(_platform_name STREQUAL "win32")
+    set(OCPN_TARGET_ARCH "x86")
+  elseif(_platform_name STREQUAL "x64")
+    set(OCPN_TARGET_ARCH "x86_64")
+  elseif(_platform_name STREQUAL "arm64")
+    set(OCPN_TARGET_ARCH "arm64")
+  else()
+    set(OCPN_TARGET_ARCH "${_platform_name}")
+  endif()
+else()
+  set(OCPN_TARGET_ARCH "unknown")
+endif()
+
+if(CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION)
+  set(OCPN_TARGET_VERSION "${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}")
+elseif(CMAKE_SYSTEM_VERSION)
+  set(OCPN_TARGET_VERSION "${CMAKE_SYSTEM_VERSION}")
+else()
+  set(OCPN_TARGET_VERSION "unknown")
+endif()
+
+configure_file(
+    ${CMAKE_CURRENT_SOURCE_DIR}/metadata.xml.in
+    ${CMAKE_CURRENT_BINARY_DIR}/metadata.xml
+    @ONLY
+)
+
+install(TARGETS boatinfo_pi
+    RUNTIME DESTINATION plugins
+    LIBRARY DESTINATION plugins
+)
+install(FILES ${CMAKE_CURRENT_BINARY_DIR}/metadata.xml DESTINATION .)
+
+set(CPACK_GENERATOR "TGZ")
+set(CPACK_PACKAGE_NAME "${PACKAGE_NAME}")
+set(CPACK_PACKAGE_VERSION "${PACKAGE_VERSION}")
+set(CPACK_PACKAGE_FILE_NAME
+    "${PACKAGE_NAME}-${PACKAGE_VERSION}-${OCPN_BUILD_TARGET}-${OCPN_TARGET_ARCH}-${OCPN_TARGET_VERSION}"
+)
+set(CPACK_INCLUDE_TOPLEVEL_DIRECTORY OFF)
+include(CPack)
