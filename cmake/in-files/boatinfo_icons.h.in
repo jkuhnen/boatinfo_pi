@@ -1,0 +1,14 @@
+#ifndef BOATINFO_ICONS_H
+#define BOATINFO_ICONS_H
+
+namespace boatinfo_icon_data {
+
+static const char kDaySvg[] =
+    R"boatinfo_svg(@BOATINFO_DAY_ICON_SVG@)boatinfo_svg";
+
+static const char kWhiteSvg[] =
+    R"boatinfo_svg(@BOATINFO_WHITE_ICON_SVG@)boatinfo_svg";
+
+}  // namespace boatinfo_icon_data
+
+#endif

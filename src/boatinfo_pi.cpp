@@ -92,7 +92,6 @@ extern "C" BOATINFO_EXPORT void destroy_pi(opencpn_plugin* plugin) {
   delete plugin;
 }
 
-boatinfo_pi::boatinfo_pi(void* ppimgr) : opencpn_plugin_118(ppimgr) {}
 boatinfo_pi::~boatinfo_pi() = default;
 
 int boatinfo_pi::Init() {
@@ -230,7 +229,7 @@ void boatinfo_pi::ApplyHostStyle() {
 }
 
 void boatinfo_pi::SetColorScheme(PI_ColorScheme cs) {
-  (void)cs;
+  m_colorScheme = cs;
   ApplyHostStyle();
 }
 
