@@ -41,4 +41,4 @@ For Windows/runtime validation, use the proven build procedure documented by the
 
 ## Repository history
 
-This repository started as BenchyNav on top of the community `testplugin`/FrontEnd2 scaffold. The working implementation is being refactored in place because preserving tested OpenCPN integration is safer and more reviewable than starting a second plugin from scratch.
+This repository started as BenchyNav on top of the community `testplugin`/FrontEnd2 scaffold. BoatInfo was refactored in place so the proven OpenCPN integration could be retained while obsolete scaffold code and resources were removed.

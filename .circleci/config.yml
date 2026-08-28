@@ -59,13 +59,6 @@ workflows:
           - build-macos-universal:
               <<: *std-filters
 
-## -------------------------------------------
-## OpenCPN 5.6.2 Plugins  Frozen - 28/05/2023
-## ------------------------------------------
-## Circleci will not build for macos 11 so removed - 18/10/2023
-          - build-msvc-2022:
-              <<: *std-filters
-
 orbs:
     cloudsmith: cloudsmith/cloudsmith@1.0.5
     win: circleci/windows@5.1.0
@@ -468,29 +461,4 @@ jobs:
         - run: chmod a+x ci/*.sh
         - run: ci/circleci-build-debian.sh
         - deploy-code
-## ---------------------
-## OpenCPN 5.6.2 Plugins
-## ---------------------
-
-## Appveyor doesn't build for Windows now.
-## If below is used, WinXT will not work.
-    build-msvc-2022:
-        executor:
-            name: win/server-2022
-            shell: bash.exe
-        environment:
-        - OCPN_TARGET: MSVC
-        - MSVC_VERSION: 2022
-        - WX_VER: 31
-        - WX_VER_PATCH: 2
-        - DEPLOY_USE_ORB: false
-        steps:
-        - checkout
-        - run:
-            privileged: False
-            shell: cmd.exe
-            command: ci\circleci-build-msvc.bat
-        - deploy-code:
-            deploy_use_orb: false
-
 

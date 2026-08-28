@@ -1,2 +1,2 @@
-src/testplugin_pi.cpp
-include/testplugin_pi.h
+src/boatinfo_pi.cpp
+include/boatinfo_pi.h
