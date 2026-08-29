@@ -23,10 +23,23 @@ wxString FormatCoordinate(double value, double maximumMagnitude,
     return wxT("---");
   }
 
-  wxString result = wxString::Format(wxT("%.5f"), std::fabs(value));
-  result += wxT(" ");
-  result += value >= 0.0 ? positiveHemisphere : negativeHemisphere;
-  return result;
+  const double absolute = std::fabs(value);
+  int degrees = static_cast<int>(std::floor(absolute));
+  double minutes = (absolute - degrees) * 60.0;
+  minutes = std::round(minutes * 1000.0) / 1000.0;
+  if (minutes >= 60.0) {
+    ++degrees;
+    minutes = 0.0;
+  }
+
+  const wxChar hemisphere =
+      value >= 0.0 ? positiveHemisphere : negativeHemisphere;
+  if (maximumMagnitude <= 90.0) {
+    return wxString::Format(wxT("%02d° %06.3f' %c"), degrees, minutes,
+                            hemisphere);
+  }
+  return wxString::Format(wxT("%03d° %06.3f' %c"), degrees, minutes,
+                          hemisphere);
 }
 
 void SetLabel(wxStaticText* control, const wxString& value) {
@@ -70,6 +83,50 @@ wxString NormalizeSignalKSelf(const wxString& self) {
     return self;
   }
   return wxT("vessels.") + self;
+}
+
+bool IsNineDigitMmsi(const wxString& value) {
+  if (value.length() != 9) {
+    return false;
+  }
+  for (size_t i = 0; i < value.length(); ++i) {
+    if (value[i] < wxT('0') || value[i] > wxT('9')) {
+      return false;
+    }
+  }
+  return true;
+}
+
+wxString MmsiFromSignalKSelf(const wxString& self) {
+  wxString identifier = self;
+  if (identifier.StartsWith(wxT("vessels."))) {
+    identifier = identifier.Mid(8);
+  }
+  if (IsNineDigitMmsi(identifier)) {
+    return identifier;
+  }
+
+  const wxString lower = identifier.Lower();
+  const int marker = lower.Find(wxT("mmsi:"));
+  if (marker == wxNOT_FOUND) {
+    return wxString();
+  }
+
+  const size_t start = static_cast<size_t>(marker) + 5;
+  if (start + 9 > identifier.length()) {
+    return wxString();
+  }
+  const wxString candidate = identifier.Mid(start, 9);
+  if (!IsNineDigitMmsi(candidate)) {
+    return wxString();
+  }
+  if (start + 9 < identifier.length()) {
+    const wxChar next = identifier[start + 9];
+    if (next >= wxT('0') && next <= wxT('9')) {
+      return wxString();
+    }
+  }
+  return candidate;
 }
 
 wxString FormatRemaining(double seconds) {
@@ -293,44 +350,85 @@ bool boatinfo_pi::ParseSignalK(const wxString& message) {
     return false;
   }
 
+  bool handled = false;
+
   if (root.HasMember(wxT("self")) && root[wxT("self")].IsString()) {
     const wxString self = NormalizeSignalKSelf(root[wxT("self")].AsString());
     if (!self.IsEmpty()) {
       m_signalKSelf = self;
+      const wxString mmsi = MmsiFromSignalKSelf(self);
+      if (!mmsi.IsEmpty() && m_mmsiValue &&
+          m_mmsiValue->GetLabel() == wxT("---")) {
+        SetLabel(m_mmsiValue, mmsi);
+        handled = true;
+      }
     }
   }
 
   if (root.HasMember(wxT("context")) && root[wxT("context")].IsString()) {
     if (m_signalKSelf.IsEmpty() ||
         root[wxT("context")].AsString() != m_signalKSelf) {
+      return handled;
+    }
+  }
+
+  auto applyIdentityObject = [&](const wxJSONValue& object) {
+    if (!object.IsObject()) {
       return false;
     }
-  }
 
-  if (!root.HasMember(wxT("updates")) || !root[wxT("updates")].IsArray()) {
-    return false;
-  }
-
-  bool handled = false;
-  wxJSONValue& updates = root[wxT("updates")];
-  for (int i = 0; i < updates.Size(); ++i) {
-    wxJSONValue& update = updates[i];
-    if (!update.IsObject() || !update.HasMember(wxT("values")) ||
-        !update[wxT("values")].IsArray()) {
-      continue;
+    bool identityHandled = false;
+    if (object.HasMember(wxT("name"))) {
+      identityHandled = UpdateSignalKPath(wxT("name"), object[wxT("name")]) ||
+                        identityHandled;
     }
+    if (object.HasMember(wxT("mmsi"))) {
+      identityHandled = UpdateSignalKPath(wxT("mmsi"), object[wxT("mmsi")]) ||
+                        identityHandled;
+    }
+    if (object.HasMember(wxT("communication")) &&
+        object[wxT("communication")].IsObject()) {
+      wxJSONValue& communication = object[wxT("communication")];
+      if (communication.HasMember(wxT("callsignVhf"))) {
+        identityHandled =
+            UpdateSignalKPath(wxT("communication.callsignVhf"),
+                              communication[wxT("callsignVhf")]) ||
+            identityHandled;
+      }
+    }
+    return identityHandled;
+  };
 
-    wxJSONValue& values = update[wxT("values")];
-    for (int j = 0; j < values.Size(); ++j) {
-      wxJSONValue& item = values[j];
-      if (!item.IsObject() || !item.HasMember(wxT("path")) ||
-          !item[wxT("path")].IsString() || !item.HasMember(wxT("value"))) {
+  handled = applyIdentityObject(root) || handled;
+
+  if (root.HasMember(wxT("updates")) && root[wxT("updates")].IsArray()) {
+    wxJSONValue& updates = root[wxT("updates")];
+    for (int i = 0; i < updates.Size(); ++i) {
+      wxJSONValue& update = updates[i];
+      if (!update.IsObject() || !update.HasMember(wxT("values")) ||
+          !update[wxT("values")].IsArray()) {
         continue;
       }
-      handled =
-          UpdateSignalKPath(item[wxT("path")].AsString(),
-                            item[wxT("value")]) ||
-          handled;
+
+      wxJSONValue& values = update[wxT("values")];
+      for (int j = 0; j < values.Size(); ++j) {
+        wxJSONValue& item = values[j];
+        if (!item.IsObject() || !item.HasMember(wxT("value"))) {
+          continue;
+        }
+
+        wxString path;
+        if (item.HasMember(wxT("path")) && item[wxT("path")].IsString()) {
+          path = item[wxT("path")].AsString();
+        }
+
+        wxJSONValue& value = item[wxT("value")];
+        if (path.IsEmpty() && value.IsObject()) {
+          handled = applyIdentityObject(value) || handled;
+        } else if (!path.IsEmpty()) {
+          handled = UpdateSignalKPath(path, value) || handled;
+        }
+      }
     }
   }
 
