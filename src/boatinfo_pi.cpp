@@ -372,7 +372,7 @@ bool boatinfo_pi::ParseSignalK(const wxString& message) {
     }
   }
 
-  auto applyIdentityObject = [&](const wxJSONValue& object) {
+  auto applyIdentityObject = [&](wxJSONValue& object) {
     if (!object.IsObject()) {
       return false;
     }
