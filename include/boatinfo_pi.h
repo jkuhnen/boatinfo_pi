@@ -3,12 +3,55 @@
 
 #include "ocpn_plugin.h"
 
+#include <map>
+#include <vector>
+
 #include <wx/aui/aui.h>
 #include <wx/bitmap.h>
+#include <wx/string.h>
 
+class wxCheckBox;
+class wxChoice;
+class wxDialog;
+class wxFileConfig;
+class wxFlexGridSizer;
 class wxJSONValue;
+class wxPanel;
 class wxStaticText;
+class wxTextCtrl;
 class wxWindow;
+
+struct BoatInfoValue {
+  enum Primitive {
+    PRIMITIVE_VALUE = 0,
+    PRIMITIVE_LEVEL,
+    PRIMITIVE_TAPE,
+    PRIMITIVE_TREND,
+    PRIMITIVE_NONE
+  };
+
+  wxString key;
+  wxString source;
+  wxString path;
+  wxString suggestedLabel;
+  wxString label;
+  wxString unit;
+  wxString qualifier;
+  double value = 0.0;
+  double displayValue = 0.0;
+  bool hasNumericValue = false;
+  wxString textValue;
+  bool valid = false;
+  bool visible = false;
+  bool userConfigured = false;
+  Primitive primitive = PRIMITIVE_VALUE;
+  bool bounded = false;
+  double minimum = 0.0;
+  double maximum = 1.0;
+  std::vector<double> trend;
+};
+
+class BoatInfoInstrumentPanel;
 
 class boatinfo_pi : public opencpn_plugin_118 {
 public:
@@ -22,6 +65,7 @@ public:
   void SetNMEASentence(wxString& sentence) override;
   void SetPluginMessage(wxString& message_id, wxString& message_body) override;
   void SetColorScheme(PI_ColorScheme cs) override;
+  void ShowPreferencesDialog(wxWindow* parent) override;
 
   int GetPlugInVersionMajor() override;
   int GetPlugInVersionMinor() override;
@@ -33,37 +77,45 @@ public:
   wxString GetLongDescription() override;
 
 private:
+  struct PreferenceRow {
+    wxString key;
+    wxCheckBox* visible = nullptr;
+    wxTextCtrl* label = nullptr;
+    wxChoice* primitive = nullptr;
+  };
+
   void ApplyHostStyle();
   void ClearControlPointers();
+  void BuildMainPanel();
+  void RebuildInstrumentGrid();
+  void LoadConfiguration();
+  void SaveConfiguration();
+  void ApplyPreferenceRows(const std::vector<PreferenceRow>& rows);
+
   bool ParseSignalK(const wxString& message);
-  bool UpdateSignalKPath(const wxString& path, const wxJSONValue& value);
+  bool ObserveSignalKPath(const wxString& path, const wxJSONValue& value);
+  void ObserveNumeric(const wxString& key, const wxString& source,
+                      const wxString& path, double rawValue);
+  void ObserveText(const wxString& key, const wxString& source,
+                   const wxString& path, const wxString& value);
+  BoatInfoValue& EnsureValue(const wxString& key, const wxString& source,
+                             const wxString& path);
+  void ApplySemanticDefaults(BoatInfoValue& value);
+  void UpdateInstrument(const wxString& key);
 
   wxBitmap m_pluginBitmap;
   PI_ColorScheme m_colorScheme = PI_GLOBAL_COLOR_SCHEME_DAY;
 
   wxAuiManager* m_auiManager = nullptr;
   wxWindow* m_panel = nullptr;
-
-  wxStaticText* m_nameValue = nullptr;
-  wxStaticText* m_mmsiValue = nullptr;
-  wxStaticText* m_callSignValue = nullptr;
-
-  wxStaticText* m_latitudeValue = nullptr;
-  wxStaticText* m_longitudeValue = nullptr;
-  wxStaticText* m_cogValue = nullptr;
-  wxStaticText* m_sogValue = nullptr;
-  wxStaticText* m_dateValue = nullptr;
-  wxStaticText* m_timeValue = nullptr;
-
-  wxStaticText* m_socValue = nullptr;
-  wxStaticText* m_remainingValue = nullptr;
-  wxStaticText* m_currentValue = nullptr;
-  wxStaticText* m_voltageValue = nullptr;
-  wxStaticText* m_powerValue = nullptr;
-  wxStaticText* m_starterVoltageValue = nullptr;
+  wxFlexGridSizer* m_instrumentGrid = nullptr;
+  wxStaticText* m_emptyHint = nullptr;
   wxStaticText* m_dataSourceValue = nullptr;
 
+  std::map<wxString, BoatInfoValue> m_values;
+  std::map<wxString, BoatInfoInstrumentPanel*> m_instruments;
   wxString m_signalKSelf;
+  bool m_configLoaded = false;
 };
 
 #endif
