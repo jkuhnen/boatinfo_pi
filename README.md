@@ -18,7 +18,9 @@ In **BoatInfo preferences** each observed value has two independent presentation
 
 `No display` keeps the selected value as a compact text row without a graphical instrument. The automatically suggested name remains editable in every mode.
 
-Observed values are grouped into navigation, electrical, tanks, propulsion, environment, vessel and technical categories. Known paths receive semantic names such as `Service battery voltage` and `Starter battery voltage` rather than generic leaf names like `Voltage`.
+Observed values are grouped into navigation, electrical, tanks, propulsion, environment, vessel and technical categories. The same category headings are shown in the live BoatInfo sidebar so a longer dashboard remains scannable. The instrument area scrolls independently between a fixed BoatInfo header and data-source footer.
+
+Known paths receive semantic names such as `Service battery voltage` and `Starter battery voltage` rather than generic leaf names like `Voltage`.
 
 When OpenCPN and Signal K expose the same primary navigation quantity, BoatInfo treats the Signal K path as an alternative source and keeps it hidden by default while leaving it available in preferences.
 
@@ -52,7 +54,9 @@ BoatInfo follows the shared `jkuhnen/opencpn-plugin-devkit` digital-instrument g
 - `Trend` for recent history;
 - explicit state handling for unavailable/invalid/stale information.
 
-The default visual language intentionally avoids simulated analogue gauges, needles, fake LCDs, gloss, bezels and decorative arcs. Values, units and operational meaning take priority over instrument imitation. The sidebar layout uses a compact information density suitable for a docked OpenCPN panel.
+The default visual language intentionally avoids simulated analogue gauges, needles, fake LCDs, gloss, bezels and decorative arcs. Values, units and operational meaning take priority over instrument imitation. Plain `Value` rows are deliberately much denser than graphical `Level`, `Tape` or `Trend` rows, so visual space is spent only where the extra context is useful.
+
+Primary labels, values and units use the host's primary dialog text color. Secondary color is reserved for scale structure and non-normal states such as `STALE` and `NO DATA`, which keeps labels readable across DAY/DUSK/NIGHT schemes.
 
 ## Design principles
 
@@ -81,7 +85,7 @@ The existing FrontEnd2 build infrastructure is retained for now to avoid mixing 
 
 Changes should start from a GitHub issue, use a dedicated branch and arrive through a pull request. See the repository `AGENTS.md` and the shared DevKit before editing.
 
-For Windows/runtime validation, use the proven build procedure documented by the DevKit and verify the resulting package in a real OpenCPN installation. At minimum test plugin enable/disable, dock/close behavior, preferences apply/cancel and restart persistence, DAY/DUSK/NIGHT, Windows DPI scaling, live OpenCPN position fixes, live Signal K own-vessel values, stale-data behavior and discovery of a previously unknown scalar path.
+For Windows/runtime validation, use the proven build procedure documented by the DevKit and verify the resulting package in a real OpenCPN installation. At minimum test plugin enable/disable, dock/close behavior, preferences apply/cancel and restart persistence, DAY/DUSK/NIGHT, Windows DPI scaling, live OpenCPN position fixes, live Signal K own-vessel values, dashboard scrolling, stale-data behavior and discovery of a previously unknown scalar path.
 
 ## Repository history
 
