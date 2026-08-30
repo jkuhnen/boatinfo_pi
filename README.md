@@ -11,11 +11,12 @@ BoatInfo builds a catalog from scalar own-vessel values it actually observes. Th
 
 Previously unknown numeric, text and boolean Signal K paths can therefore appear in BoatInfo preferences without adding path-specific UI code.
 
-In **BoatInfo preferences** each observed value can be:
+In **BoatInfo preferences** each observed value has two independent presentation choices:
 
-- shown or hidden;
-- given an automatically suggested label which the user can edit;
-- assigned a digital presentation: `Value`, `Level`, `Tape`, `Trend` or `None`.
+- **Show** decides whether the value appears in the BoatInfo panel at all;
+- **Display** selects `Value`, `Level`, `Tape`, `Trend` or `No display`.
+
+`No display` keeps the selected value as a compact text row without a graphical instrument. The automatically suggested name remains editable in every mode.
 
 The selection is stored in the OpenCPN plugin configuration and restored after restart. Known marine semantics receive useful defaults where possible, for example battery state of charge as a linear `Level`, angular values as a `Tape`, and scalar measurements as `Value`.
 
