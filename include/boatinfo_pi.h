@@ -15,6 +15,7 @@ class wxChoice;
 class wxFileConfig;
 class wxFlexGridSizer;
 class wxJSONValue;
+class wxScrolledWindow;
 class wxStaticText;
 class wxTextCtrl;
 class wxTimer;
@@ -122,6 +123,7 @@ private:
 
   wxAuiManager* m_auiManager = nullptr;
   wxWindow* m_panel = nullptr;
+  wxScrolledWindow* m_instrumentScroll = nullptr;
   wxFlexGridSizer* m_instrumentGrid = nullptr;
   wxStaticText* m_emptyHint = nullptr;
   wxStaticText* m_dataSourceValue = nullptr;
