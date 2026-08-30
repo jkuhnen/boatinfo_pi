@@ -18,9 +18,27 @@ In **BoatInfo preferences** each observed value has two independent presentation
 
 `No display` keeps the selected value as a compact text row without a graphical instrument. The automatically suggested name remains editable in every mode.
 
-The selection is stored in the OpenCPN plugin configuration and restored after restart. Known marine semantics receive useful defaults where possible, for example battery state of charge as a linear `Level`, angular values as a `Tape`, and scalar measurements as `Value`.
+Observed values are grouped into navigation, electrical, tanks, propulsion, environment, vessel and technical categories. Known paths receive semantic names such as `Service battery voltage` and `Starter battery voltage` rather than generic leaf names like `Voltage`.
 
-Signal K values use standard SI semantics where the path is recognized. BoatInfo converts common values for presentation, including speed to knots, angles to degrees, temperatures to degrees Celsius, state-of-charge/level ratios to percent, remaining time to hours and revolutions to rpm.
+When OpenCPN and Signal K expose the same primary navigation quantity, BoatInfo treats the Signal K path as an alternative source and keeps it hidden by default while leaving it available in preferences.
+
+The selection is stored in the OpenCPN plugin configuration and restored after restart. User-edited labels are preserved while automatically generated labels can improve across BoatInfo versions.
+
+## Units and validity
+
+Signal K values use SI semantics where the path is recognized. BoatInfo converts common values for presentation, including:
+
+- speed to knots;
+- angular quantities to degrees;
+- temperature from Kelvin to degrees Celsius;
+- state-of-charge and tank-level ratios to percent;
+- remaining time from seconds to hours;
+- battery cumulative charge/discharge from Coulomb to ampere-hours;
+- revolutions per second to rpm.
+
+OpenCPN latitude and longitude are formatted through OpenCPN's nautical coordinate formatter rather than shown as a bare decimal-degree value.
+
+Operational values record their last update time. If a previously valid source stops updating, BoatInfo keeps the last value only with an explicit `STALE` indication; unavailable/unsupported input renders as `NO DATA`. A numeric zero remains a valid value.
 
 Discovery currently means **values observed in the live data stream**. BoatInfo does not yet query a Signal K server separately for the complete metadata/path catalog.
 
@@ -32,9 +50,9 @@ BoatInfo follows the shared `jkuhnen/opencpn-plugin-devkit` digital-instrument g
 - `Level` for bounded quantities;
 - `Tape` for cyclic/ordered context such as heading;
 - `Trend` for recent history;
-- explicit state handling for unavailable/invalid information.
+- explicit state handling for unavailable/invalid/stale information.
 
-The default visual language intentionally avoids simulated analogue gauges, needles, fake LCDs, gloss, bezels and decorative arcs. Values, units and operational meaning take priority over instrument imitation.
+The default visual language intentionally avoids simulated analogue gauges, needles, fake LCDs, gloss, bezels and decorative arcs. Values, units and operational meaning take priority over instrument imitation. The sidebar layout uses a compact information density suitable for a docked OpenCPN panel.
 
 ## Design principles
 
@@ -42,9 +60,10 @@ The default visual language intentionally avoids simulated analogue gauges, need
 - The UI is vessel-neutral and does not contain Benchy-specific assumptions.
 - OpenCPN host colors are used so the panel follows DAY/DUSK/NIGHT changes.
 - Layout dimensions use DPI-aware wxWidgets logical sizing.
-- Missing or invalid values remain explicitly unavailable rather than being guessed.
+- Missing, stale and invalid values remain explicit rather than being guessed.
 - Signal K updates are filtered to the server-declared own-vessel context when that context is available.
 - Provider acquisition and presentation semantics are kept separate so additional data sources can later normalize into the same instrument model.
+- The footer summarizes active data families (`OpenCPN`, `Signal K`, `NMEA XDR`) rather than implying that the most recently received message is the sole source of all displayed values.
 
 The project follows the conventions in `jkuhnen/opencpn-plugin-devkit`. Maritime HMI references in that DevKit are design guidance only; BoatInfo is **not** claimed to be ECDIS, type-approved or otherwise certified navigation equipment.
 
@@ -62,7 +81,7 @@ The existing FrontEnd2 build infrastructure is retained for now to avoid mixing 
 
 Changes should start from a GitHub issue, use a dedicated branch and arrive through a pull request. See the repository `AGENTS.md` and the shared DevKit before editing.
 
-For Windows/runtime validation, use the proven build procedure documented by the DevKit and verify the resulting package in a real OpenCPN installation. At minimum test plugin enable/disable, dock/close behavior, preferences apply/cancel and restart persistence, DAY/DUSK/NIGHT, Windows DPI scaling, live OpenCPN position fixes, live Signal K own-vessel values and discovery of a previously unknown scalar path.
+For Windows/runtime validation, use the proven build procedure documented by the DevKit and verify the resulting package in a real OpenCPN installation. At minimum test plugin enable/disable, dock/close behavior, preferences apply/cancel and restart persistence, DAY/DUSK/NIGHT, Windows DPI scaling, live OpenCPN position fixes, live Signal K own-vessel values, stale-data behavior and discovery of a previously unknown scalar path.
 
 ## Repository history
 
