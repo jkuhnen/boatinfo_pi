@@ -64,6 +64,7 @@ struct BoatInfoValue {
 };
 
 class BoatInfoInstrumentPanel;
+class BoatInfoVesselPanel;
 
 class boatinfo_pi : public opencpn_plugin_118 {
 public:
@@ -103,11 +104,13 @@ private:
   void LoadConfiguration();
   void LoadProfile(const wxString& profileKey, bool allowLegacy);
   void SaveConfiguration();
+  void SaveProfile(wxFileConfig* config, const wxString& profileKey);
   void ApplyPreferenceRows(const std::vector<PreferenceRow>& rows);
   void RefreshFreshness();
   void UpdateSourceSummary();
   void EnsureIdentityValues();
   void ApplyIdentityFallbacks();
+  void UpdateVesselHeader();
   void ActivateVesselProfile(const wxString& signalKSelf);
 
   bool ParseSignalK(const wxString& message);
@@ -128,6 +131,7 @@ private:
 
   wxAuiManager* m_auiManager = nullptr;
   wxWindow* m_panel = nullptr;
+  BoatInfoVesselPanel* m_vesselPanel = nullptr;
   wxScrolledWindow* m_instrumentScroll = nullptr;
   wxFlexGridSizer* m_instrumentGrid = nullptr;
   wxStaticText* m_emptyHint = nullptr;
