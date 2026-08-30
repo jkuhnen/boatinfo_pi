@@ -2,15 +2,38 @@
 
 BoatInfo is a compact OpenCPN sidebar plugin for **own-vessel information**. It generalizes the original BenchyNav prototype so the plugin is useful on any boat rather than being tied to one vessel.
 
-## Current information
+## Configurable vessel values
 
-BoatInfo currently presents three groups:
+BoatInfo builds a catalog from scalar own-vessel values it actually observes. The first implementation uses:
 
-- **Vessel:** name, MMSI and VHF call sign from Signal K own-vessel data.
-- **Navigation:** latitude, longitude, COG, SOG, UTC date and UTC time from OpenCPN position-fix callbacks.
-- **Electrical:** service-battery state of charge, estimated time remaining, current, voltage and power plus starter-battery voltage from Signal K paths.
+- OpenCPN position-fix values such as latitude, longitude, COG, SOG and heading;
+- Signal K own-vessel delta values received through OpenCPN plugin messaging.
 
-The panel also indicates whether relevant data was most recently seen through Signal K or NMEA XDR.
+Previously unknown numeric, text and boolean Signal K paths can therefore appear in BoatInfo preferences without adding path-specific UI code.
+
+In **BoatInfo preferences** each observed value can be:
+
+- shown or hidden;
+- given an automatically suggested label which the user can edit;
+- assigned a digital presentation: `Value`, `Level`, `Tape`, `Trend` or `None`.
+
+The selection is stored in the OpenCPN plugin configuration and restored after restart. Known marine semantics receive useful defaults where possible, for example battery state of charge as a linear `Level`, angular values as a `Tape`, and scalar measurements as `Value`.
+
+Signal K values use standard SI semantics where the path is recognized. BoatInfo converts common values for presentation, including speed to knots, angles to degrees, temperatures to degrees Celsius, state-of-charge/level ratios to percent, remaining time to hours and revolutions to rpm.
+
+Discovery currently means **values observed in the live data stream**. BoatInfo does not yet query a Signal K server separately for the complete metadata/path catalog.
+
+## Digital HMI design
+
+BoatInfo follows the shared `jkuhnen/opencpn-plugin-devkit` digital-instrument grammar:
+
+- `Value` for a current scalar/text value;
+- `Level` for bounded quantities;
+- `Tape` for cyclic/ordered context such as heading;
+- `Trend` for recent history;
+- explicit state handling for unavailable/invalid information.
+
+The default visual language intentionally avoids simulated analogue gauges, needles, fake LCDs, gloss, bezels and decorative arcs. Values, units and operational meaning take priority over instrument imitation.
 
 ## Design principles
 
@@ -20,6 +43,7 @@ The panel also indicates whether relevant data was most recently seen through Si
 - Layout dimensions use DPI-aware wxWidgets logical sizing.
 - Missing or invalid values remain explicitly unavailable rather than being guessed.
 - Signal K updates are filtered to the server-declared own-vessel context when that context is available.
+- Provider acquisition and presentation semantics are kept separate so additional data sources can later normalize into the same instrument model.
 
 The project follows the conventions in `jkuhnen/opencpn-plugin-devkit`. Maritime HMI references in that DevKit are design guidance only; BoatInfo is **not** claimed to be ECDIS, type-approved or otherwise certified navigation equipment.
 
@@ -31,13 +55,13 @@ Package/common identifier: `boatinfo`
 
 Target OpenCPN plugin API: 1.18
 
-The existing FrontEnd2 build infrastructure is retained for now to avoid mixing a product refactor with an unrelated build-system migration.
+The existing FrontEnd2 build infrastructure is retained for now to avoid mixing the product work with an unrelated build-system migration.
 
 ## Development workflow
 
 Changes should start from a GitHub issue, use a dedicated branch and arrive through a pull request. See the repository `AGENTS.md` and the shared DevKit before editing.
 
-For Windows/runtime validation, use the proven build procedure documented by the DevKit and verify the resulting package in a real OpenCPN installation. At minimum test plugin enable/disable, dock/close behavior, DAY/DUSK/NIGHT, Windows DPI scaling, live OpenCPN position fixes, Signal K own-vessel identity and service/starter battery values.
+For Windows/runtime validation, use the proven build procedure documented by the DevKit and verify the resulting package in a real OpenCPN installation. At minimum test plugin enable/disable, dock/close behavior, preferences apply/cancel and restart persistence, DAY/DUSK/NIGHT, Windows DPI scaling, live OpenCPN position fixes, live Signal K own-vessel values and discovery of a previously unknown scalar path.
 
 ## Repository history
 
