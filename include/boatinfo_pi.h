@@ -12,13 +12,12 @@
 
 class wxCheckBox;
 class wxChoice;
-class wxDialog;
 class wxFileConfig;
 class wxFlexGridSizer;
 class wxJSONValue;
-class wxPanel;
 class wxStaticText;
 class wxTextCtrl;
+class wxTimer;
 class wxWindow;
 
 struct BoatInfoValue {
@@ -33,18 +32,29 @@ struct BoatInfoValue {
   wxString key;
   wxString source;
   wxString path;
+  wxString category;
+  wxString semanticId;
   wxString suggestedLabel;
   wxString label;
   wxString unit;
   wxString qualifier;
+
   double value = 0.0;
   double displayValue = 0.0;
   bool hasNumericValue = false;
   wxString textValue;
+
   bool valid = false;
+  bool stale = false;
+  long long lastUpdateSeconds = 0;
+  int freshnessSeconds = 30;
+
   bool visible = false;
   bool userConfigured = false;
+  bool labelCustomized = false;
+  bool alternativeSource = false;
   Primitive primitive = PRIMITIVE_VALUE;
+
   bool bounded = false;
   double minimum = 0.0;
   double maximum = 1.0;
@@ -91,6 +101,8 @@ private:
   void LoadConfiguration();
   void SaveConfiguration();
   void ApplyPreferenceRows(const std::vector<PreferenceRow>& rows);
+  void RefreshFreshness();
+  void UpdateSourceSummary();
 
   bool ParseSignalK(const wxString& message);
   bool ObserveSignalKPath(const wxString& path, const wxJSONValue& value);
@@ -98,6 +110,8 @@ private:
                       const wxString& path, double rawValue);
   void ObserveText(const wxString& key, const wxString& source,
                    const wxString& path, const wxString& value);
+  void ObserveNoData(const wxString& key, const wxString& source,
+                     const wxString& path);
   BoatInfoValue& EnsureValue(const wxString& key, const wxString& source,
                              const wxString& path);
   void ApplySemanticDefaults(BoatInfoValue& value);
@@ -111,11 +125,15 @@ private:
   wxFlexGridSizer* m_instrumentGrid = nullptr;
   wxStaticText* m_emptyHint = nullptr;
   wxStaticText* m_dataSourceValue = nullptr;
+  wxTimer* m_staleTimer = nullptr;
 
   std::map<wxString, BoatInfoValue> m_values;
   std::map<wxString, BoatInfoInstrumentPanel*> m_instruments;
   wxString m_signalKSelf;
   bool m_configLoaded = false;
+  bool m_seenOpenCPN = false;
+  bool m_seenSignalK = false;
+  bool m_seenNmeaXdr = false;
 };
 
 #endif
