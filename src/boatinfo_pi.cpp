@@ -30,6 +30,9 @@ namespace {
 const double kRadToDeg = 180.0 / 3.14159265358979323846;
 const double kMsToKnots = 1.9438444924406;
 const double kCoulombToAh = 1.0 / 3600.0;
+const wxString kIdentityNameKey = wxT("signalk:name");
+const wxString kIdentityMmsiKey = wxT("signalk:mmsi");
+const wxString kIdentityCallSignKey = wxT("signalk:communication.callsignVhf");
 
 bool JsonNumber(const wxJSONValue& value, double& result) {
   switch (value.GetType()) {
@@ -67,6 +70,26 @@ long long NowSeconds() {
 wxString NormalizeSignalKSelf(const wxString& self) {
   if (self.IsEmpty() || self.StartsWith(wxT("vessels."))) return self;
   return wxT("vessels.") + self;
+}
+
+wxString SafeProfileKey(const wxString& input) {
+  if (input.IsEmpty()) return wxT("default");
+  wxString result;
+  for (size_t i = 0; i < input.length(); ++i) {
+    const wxChar c = input[i];
+    const bool safe = (c >= wxT('a') && c <= wxT('z')) ||
+                      (c >= wxT('A') && c <= wxT('Z')) ||
+                      (c >= wxT('0') && c <= wxT('9')) || c == wxT('_') ||
+                      c == wxT('-');
+    result += safe ? c : wxT('_');
+  }
+  return result.IsEmpty() ? wxT("default") : result;
+}
+
+bool IsIdentityPath(const wxString& path) {
+  const wxString lower = path.Lower();
+  return lower == wxT("name") || lower == wxT("mmsi") ||
+         lower == wxT("communication.callsignvhf");
 }
 
 wxString HumanizeToken(const wxString& token) {
@@ -169,13 +192,12 @@ int SelectionFromPrimitive(BoatInfoValue::Primitive primitive) {
 }
 
 int CategoryRank(const wxString& category) {
-  if (category == wxT("Vessel")) return 0;
-  if (category == wxT("Navigation")) return 1;
-  if (category == wxT("Electrical")) return 2;
-  if (category == wxT("Tanks")) return 3;
-  if (category == wxT("Propulsion")) return 4;
-  if (category == wxT("Environment")) return 5;
-  return 6;
+  if (category == wxT("Navigation")) return 0;
+  if (category == wxT("Electrical")) return 1;
+  if (category == wxT("Tanks")) return 2;
+  if (category == wxT("Propulsion")) return 3;
+  if (category == wxT("Environment")) return 4;
+  return 5;
 }
 
 bool ValueOrder(const BoatInfoValue* a, const BoatInfoValue* b) {
@@ -232,7 +254,80 @@ wxString UnitWithQualifier(const BoatInfoValue& value) {
   if (value.unit.IsEmpty()) return value.qualifier;
   return value.unit + wxT(" ") + value.qualifier;
 }
+
+wxString EffectiveText(const std::map<wxString, BoatInfoValue>& values,
+                       const wxString& key) {
+  std::map<wxString, BoatInfoValue>::const_iterator found = values.find(key);
+  if (found == values.end() || !found->second.valid ||
+      found->second.textValue.IsEmpty())
+    return wxT("—");
+  return found->second.textValue;
+}
 }  // namespace
+
+class BoatInfoVesselPanel : public wxPanel {
+public:
+  explicit BoatInfoVesselPanel(wxWindow* parent)
+      : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+                wxBORDER_NONE) {
+    SetBackgroundStyle(wxBG_STYLE_PAINT);
+    SetMinSize(wxSize(-1, FromDIP(54)));
+    Bind(wxEVT_PAINT, &BoatInfoVesselPanel::OnPaint, this);
+  }
+
+  void SetIdentity(const wxString& name, const wxString& mmsi,
+                   const wxString& callSign, const wxString& source) {
+    m_name = name.IsEmpty() ? wxT("—") : name;
+    m_mmsi = mmsi.IsEmpty() ? wxT("—") : mmsi;
+    m_callSign = callSign.IsEmpty() ? wxT("—") : callSign;
+    m_source = source;
+    Refresh(false);
+  }
+
+private:
+  void OnPaint(wxPaintEvent&) {
+    wxAutoBufferedPaintDC dc(this);
+    wxColour background, text, secondary, accent;
+    ResolveHostColours(background, text, secondary, accent);
+    dc.SetBackground(wxBrush(background));
+    dc.Clear();
+    const int pad = FromDIP(4);
+
+    wxFont nameFont = GetFont();
+    nameFont.SetWeight(wxFONTWEIGHT_BOLD);
+    nameFont.SetPointSize(std::max(11, nameFont.GetPointSize() + 2));
+    dc.SetFont(nameFont);
+    dc.SetTextForeground(text);
+    dc.DrawText(m_name, pad, FromDIP(1));
+
+    wxFont metaFont = GetFont();
+    metaFont.SetPointSize(std::max(8, metaFont.GetPointSize() - 1));
+    dc.SetFont(metaFont);
+    dc.SetTextForeground(text);
+    wxString meta;
+    if (m_mmsi != wxT("—")) meta += wxT("MMSI ") + m_mmsi;
+    if (m_callSign != wxT("—")) {
+      if (!meta.IsEmpty()) meta += wxT("  ·  ");
+      meta += m_callSign;
+    }
+    if (meta.IsEmpty()) meta = wxT("No vessel identity data");
+    dc.DrawText(meta, pad, FromDIP(27));
+
+    if (!m_source.IsEmpty()) {
+      dc.SetTextForeground(secondary);
+      wxCoord width = 0, height = 0;
+      dc.GetTextExtent(m_source, &width, &height);
+      dc.DrawText(m_source,
+                  std::max(pad, GetClientSize().x - pad - static_cast<int>(width)),
+                  FromDIP(1));
+    }
+  }
+
+  wxString m_name;
+  wxString m_mmsi;
+  wxString m_callSign;
+  wxString m_source;
+};
 
 class BoatInfoInstrumentPanel : public wxPanel {
 public:
@@ -285,7 +380,6 @@ private:
       dc.SetFont(labelFont);
       dc.SetTextForeground(text);
       dc.DrawText(label, pad, FromDIP(5));
-
       wxString compact = rendered;
       if (m_model.valid && !unit.IsEmpty()) compact += wxT(" ") + unit;
       wxFont compactFont = GetFont();
@@ -411,20 +505,8 @@ boatinfo_pi::~boatinfo_pi() = default;
 
 int boatinfo_pi::Init() {
   LoadConfiguration();
-
-  BoatInfoValue& vesselName =
-      EnsureValue(wxT("signalk:name"), wxT("Signal K"), wxT("name"));
-  vesselName.visible = true;
-  vesselName.primitive = BoatInfoValue::PRIMITIVE_NONE;
-  BoatInfoValue& vesselMmsi =
-      EnsureValue(wxT("signalk:mmsi"), wxT("Signal K"), wxT("mmsi"));
-  vesselMmsi.visible = true;
-  vesselMmsi.primitive = BoatInfoValue::PRIMITIVE_NONE;
-  BoatInfoValue& vesselCallsign = EnsureValue(
-      wxT("signalk:communication.callsignVhf"), wxT("Signal K"),
-      wxT("communication.callsignVhf"));
-  vesselCallsign.visible = true;
-  vesselCallsign.primitive = BoatInfoValue::PRIMITIVE_NONE;
+  EnsureIdentityValues();
+  ApplyIdentityFallbacks();
 
   m_auiManager = GetFrameAuiManager();
   if (!m_auiManager || !m_auiManager->GetManagedWindow()) return 0;
@@ -480,7 +562,11 @@ void boatinfo_pi::BuildMainPanel() {
   titleFont.SetWeight(wxFONTWEIGHT_BOLD);
   titleFont.SetPointSize(titleFont.GetPointSize() + 1);
   title->SetFont(titleFont);
-  root->Add(title, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, outer);
+  root->Add(title, 0, wxLEFT | wxRIGHT | wxTOP, outer);
+
+  m_vesselPanel = new BoatInfoVesselPanel(m_panel);
+  root->Add(m_vesselPanel, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP | wxBOTTOM,
+            m_panel->FromDIP(4));
 
   m_instrumentScroll = new wxScrolledWindow(
       m_panel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
@@ -501,6 +587,7 @@ void boatinfo_pi::BuildMainPanel() {
   root->Add(footer, 0, wxEXPAND | wxALL, outer);
 
   m_panel->SetSizer(root);
+  UpdateVesselHeader();
   RebuildInstrumentGrid();
   ApplyHostStyle();
 }
@@ -514,7 +601,8 @@ void boatinfo_pi::RebuildInstrumentGrid() {
   std::vector<const BoatInfoValue*> visible;
   for (std::map<wxString, BoatInfoValue>::const_iterator it = m_values.begin();
        it != m_values.end(); ++it) {
-    if (it->second.visible) visible.push_back(&it->second);
+    if (it->second.visible && !IsIdentityPath(it->second.path))
+      visible.push_back(&it->second);
   }
   std::sort(visible.begin(), visible.end(), ValueOrder);
 
@@ -596,6 +684,65 @@ BoatInfoValue& boatinfo_pi::EnsureValue(const wxString& key,
   value.label = value.suggestedLabel;
   ApplySemanticDefaults(value);
   return m_values.insert(std::make_pair(key, value)).first->second;
+}
+
+void boatinfo_pi::EnsureIdentityValues() {
+  BoatInfoValue& name =
+      EnsureValue(kIdentityNameKey, wxT("Signal K"), wxT("name"));
+  BoatInfoValue& mmsi =
+      EnsureValue(kIdentityMmsiKey, wxT("Signal K"), wxT("mmsi"));
+  BoatInfoValue& callSign = EnsureValue(
+      kIdentityCallSignKey, wxT("Signal K"), wxT("communication.callsignVhf"));
+  name.visible = mmsi.visible = callSign.visible = true;
+  name.primitive = mmsi.primitive = callSign.primitive =
+      BoatInfoValue::PRIMITIVE_NONE;
+}
+
+void boatinfo_pi::ApplyIdentityFallbacks() {
+  EnsureIdentityValues();
+  struct Fallback {
+    const wxString* key;
+    const wxString* text;
+  } fallbacks[] = {{&kIdentityNameKey, &m_manualVesselName},
+                   {&kIdentityMmsiKey, &m_manualMmsi},
+                   {&kIdentityCallSignKey, &m_manualCallSign}};
+  for (size_t i = 0; i < 3; ++i) {
+    BoatInfoValue& value = m_values[*fallbacks[i].key];
+    if (!value.valid && !fallbacks[i].text->IsEmpty()) {
+      value.textValue = *fallbacks[i].text;
+      value.hasNumericValue = false;
+      value.valid = true;
+      value.stale = false;
+      value.manualFallback = true;
+      value.lastUpdateSeconds = 0;
+    }
+  }
+  UpdateVesselHeader();
+}
+
+void boatinfo_pi::UpdateVesselHeader() {
+  if (!m_vesselPanel) return;
+  const wxString name = EffectiveText(m_values, kIdentityNameKey);
+  const wxString mmsi = EffectiveText(m_values, kIdentityMmsiKey);
+  const wxString callSign = EffectiveText(m_values, kIdentityCallSignKey);
+  bool signalK = false;
+  bool manual = false;
+  const wxString keys[] = {kIdentityNameKey, kIdentityMmsiKey,
+                           kIdentityCallSignKey};
+  for (size_t i = 0; i < 3; ++i) {
+    std::map<wxString, BoatInfoValue>::const_iterator it = m_values.find(keys[i]);
+    if (it == m_values.end() || !it->second.valid) continue;
+    if (it->second.manualFallback)
+      manual = true;
+    else
+      signalK = true;
+  }
+  wxString source;
+  if (signalK)
+    source = wxT("Signal K");
+  else if (manual)
+    source = wxT("Manual");
+  m_vesselPanel->SetIdentity(name, mmsi, callSign, source);
 }
 
 void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
@@ -835,6 +982,7 @@ void boatinfo_pi::ObserveNumeric(const wxString& key, const wxString& source,
   value.textValue.clear();
   value.valid = std::isfinite(rawValue);
   value.stale = false;
+  value.manualFallback = false;
   value.lastUpdateSeconds = NowSeconds();
 
   const wxString lower = path.Lower();
@@ -885,10 +1033,12 @@ void boatinfo_pi::ObserveText(const wxString& key, const wxString& source,
   value.textValue = textValue;
   value.valid = !textValue.IsEmpty();
   value.stale = false;
+  value.manualFallback = false;
   value.lastUpdateSeconds = NowSeconds();
   if (source == wxT("Signal K")) m_seenSignalK = true;
   UpdateSourceSummary();
-  if (isNew && m_panel) RebuildInstrumentGrid();
+  if (IsIdentityPath(path)) UpdateVesselHeader();
+  if (isNew && m_panel && !IsIdentityPath(path)) RebuildInstrumentGrid();
   UpdateInstrument(key);
 }
 
@@ -898,8 +1048,10 @@ void boatinfo_pi::ObserveNoData(const wxString& key, const wxString& source,
   BoatInfoValue& value = EnsureValue(key, source, path);
   value.valid = false;
   value.stale = false;
+  value.manualFallback = false;
   value.lastUpdateSeconds = NowSeconds();
-  if (isNew && m_panel) RebuildInstrumentGrid();
+  if (IsIdentityPath(path)) ApplyIdentityFallbacks();
+  if (isNew && m_panel && !IsIdentityPath(path)) RebuildInstrumentGrid();
   UpdateInstrument(key);
 }
 
@@ -916,6 +1068,7 @@ void boatinfo_pi::RefreshFreshness() {
   for (std::map<wxString, BoatInfoValue>::iterator it = m_values.begin();
        it != m_values.end(); ++it) {
     BoatInfoValue& value = it->second;
+    if (IsIdentityPath(value.path) || value.manualFallback) continue;
     const bool shouldBeStale =
         value.valid && value.lastUpdateSeconds > 0 &&
         now - value.lastUpdateSeconds > value.freshnessSeconds;
@@ -981,23 +1134,71 @@ void boatinfo_pi::SetPluginMessage(wxString& message_id,
   }
 }
 
+void boatinfo_pi::ActivateVesselProfile(const wxString& signalKSelf) {
+  const wxString normalized = NormalizeSignalKSelf(signalKSelf);
+  if (normalized.IsEmpty()) return;
+  const wxString nextProfile = SafeProfileKey(normalized);
+  if (nextProfile == m_profileKey && normalized == m_signalKSelf) return;
+
+  if (m_configLoaded) SaveConfiguration();
+  m_signalKSelf = normalized;
+  m_profileKey = nextProfile;
+
+  for (std::map<wxString, BoatInfoValue>::iterator it = m_values.begin();
+       it != m_values.end();) {
+    if (it->second.source == wxT("Signal K") &&
+        !IsIdentityPath(it->second.path)) {
+      it = m_values.erase(it);
+      continue;
+    }
+    BoatInfoValue& value = it->second;
+    if (IsIdentityPath(value.path)) {
+      value.valid = false;
+      value.stale = false;
+      value.manualFallback = false;
+      value.textValue.clear();
+    }
+    value.userConfigured = false;
+    value.labelCustomized = false;
+    value.visible = false;
+    value.primitive = BoatInfoValue::PRIMITIVE_VALUE;
+    ApplySemanticDefaults(value);
+    ++it;
+  }
+
+  m_manualVesselName.clear();
+  m_manualMmsi.clear();
+  m_manualCallSign.clear();
+  LoadProfile(m_profileKey, false);
+  EnsureIdentityValues();
+  ApplyIdentityFallbacks();
+  if (m_panel) {
+    RebuildInstrumentGrid();
+    UpdateVesselHeader();
+  }
+}
+
 bool boatinfo_pi::ParseSignalK(const wxString& message) {
   wxJSONValue root;
   wxJSONReader reader;
   if (reader.Parse(message, &root) != 0 || !root.IsObject()) return false;
 
+  bool handled = false;
   if (root.HasMember(wxT("self")) && root[wxT("self")].IsString()) {
     const wxString self = NormalizeSignalKSelf(root[wxT("self")].AsString());
-    if (!self.IsEmpty()) m_signalKSelf = self;
+    if (!self.IsEmpty()) {
+      ActivateVesselProfile(self);
+      handled = true;
+    }
   }
+
   if (root.HasMember(wxT("context")) && root[wxT("context")].IsString()) {
-    const wxString context = root[wxT("context")].AsString();
-    if (!m_signalKSelf.IsEmpty() && context != m_signalKSelf) return false;
+    const wxString context = NormalizeSignalKSelf(root[wxT("context")].AsString());
+    if (!m_signalKSelf.IsEmpty() && context != m_signalKSelf) return handled;
   }
   if (!root.HasMember(wxT("updates")) || !root[wxT("updates")].IsArray())
-    return false;
+    return handled;
 
-  bool handled = false;
   wxJSONValue& updates = root[wxT("updates")];
   for (int i = 0; i < updates.Size(); ++i) {
     wxJSONValue& update = updates[i];
@@ -1022,7 +1223,11 @@ bool boatinfo_pi::ObserveSignalKPath(const wxString& path,
   const wxString key = wxT("signalk:") + path;
   double number = 0.0;
   if (JsonNumber(jsonValue, number)) {
-    ObserveNumeric(key, wxT("Signal K"), path, number);
+    if (path.Lower() == wxT("mmsi"))
+      ObserveText(key, wxT("Signal K"), path,
+                  wxString::Format(wxT("%.0f"), number));
+    else
+      ObserveNumeric(key, wxT("Signal K"), path, number);
     return true;
   }
   if (jsonValue.IsString()) {
@@ -1040,19 +1245,55 @@ bool boatinfo_pi::ObserveSignalKPath(const wxString& path,
 
 void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
   wxDialog dialog(parent, wxID_ANY, wxT("BoatInfo preferences"),
-                  wxDefaultPosition, wxSize(840, 600),
+                  wxDefaultPosition, wxSize(900, 650),
                   wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
   wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
 
   wxStaticText* intro = new wxStaticText(
       &dialog, wxID_ANY,
-      wxT("BoatInfo learns own-vessel values as they are observed. Choose what "
-          "is shown, edit the suggested name and select the digital "
-          "presentation. Vessel identity (name, MMSI and call sign) is always "
-          "shown first. OpenCPN navigation values are preferred by default "
-          "when the same navigation quantity also arrives through Signal K."));
-  intro->Wrap(dialog.FromDIP(790));
+      wxT("BoatInfo learns own-vessel values as they are observed. Vessel "
+          "identity comes from Signal K when available. Manual identity below "
+          "is only used as a fallback. Display choices are stored separately "
+          "for each detected Signal K vessel."));
+  intro->Wrap(dialog.FromDIP(850));
   root->Add(intro, 0, wxEXPAND | wxALL, dialog.FromDIP(12));
+
+  wxStaticText* vesselTitle =
+      new wxStaticText(&dialog, wxID_ANY, wxT("VESSEL IDENTITY"));
+  wxFont sectionFont = vesselTitle->GetFont();
+  sectionFont.SetWeight(wxFONTWEIGHT_BOLD);
+  vesselTitle->SetFont(sectionFont);
+  root->Add(vesselTitle, 0, wxLEFT | wxRIGHT | wxTOP, dialog.FromDIP(12));
+
+  wxStaticText* profileInfo = new wxStaticText(
+      &dialog, wxID_ANY,
+      m_signalKSelf.IsEmpty()
+          ? wxT("Profile: default (waiting for Signal K vessel identity)")
+          : wxT("Profile: ") + m_signalKSelf);
+  root->Add(profileInfo, 0, wxLEFT | wxRIGHT | wxBOTTOM, dialog.FromDIP(12));
+
+  wxFlexGridSizer* identityGrid = new wxFlexGridSizer(2, dialog.FromDIP(6),
+                                                      dialog.FromDIP(10));
+  identityGrid->AddGrowableCol(1, 1);
+  identityGrid->Add(new wxStaticText(&dialog, wxID_ANY, wxT("Manual name")), 0,
+                    wxALIGN_CENTER_VERTICAL);
+  wxTextCtrl* manualName =
+      new wxTextCtrl(&dialog, wxID_ANY, m_manualVesselName);
+  identityGrid->Add(manualName, 1, wxEXPAND);
+  identityGrid->Add(new wxStaticText(&dialog, wxID_ANY, wxT("Manual MMSI")), 0,
+                    wxALIGN_CENTER_VERTICAL);
+  wxTextCtrl* manualMmsi = new wxTextCtrl(&dialog, wxID_ANY, m_manualMmsi);
+  identityGrid->Add(manualMmsi, 1, wxEXPAND);
+  identityGrid->Add(new wxStaticText(&dialog, wxID_ANY, wxT("Manual call sign")),
+                    0, wxALIGN_CENTER_VERTICAL);
+  wxTextCtrl* manualCallSign =
+      new wxTextCtrl(&dialog, wxID_ANY, m_manualCallSign);
+  identityGrid->Add(manualCallSign, 1, wxEXPAND);
+  root->Add(identityGrid, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM,
+            dialog.FromDIP(12));
+
+  root->Add(new wxStaticLine(&dialog), 0,
+            wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM, dialog.FromDIP(12));
 
   wxScrolledWindow* scroll = new wxScrolledWindow(
       &dialog, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
@@ -1073,8 +1314,9 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
 
   std::vector<BoatInfoValue*> ordered;
   for (std::map<wxString, BoatInfoValue>::iterator it = m_values.begin();
-       it != m_values.end(); ++it)
-    ordered.push_back(&it->second);
+       it != m_values.end(); ++it) {
+    if (!IsIdentityPath(it->second.path)) ordered.push_back(&it->second);
+  }
   std::sort(ordered.begin(), ordered.end(), ValueOrder);
 
   std::vector<PreferenceRow> rows;
@@ -1093,9 +1335,7 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
     PreferenceRow row;
     row.key = value.key;
     row.visible = new wxCheckBox(scroll, wxID_ANY, wxEmptyString);
-    row.visible->SetValue(value.category == wxT("Vessel") ? true
-                                                          : value.visible);
-    if (value.category == wxT("Vessel")) row.visible->Enable(false);
+    row.visible->SetValue(value.visible);
     grid->Add(row.visible, 0, wxALIGN_CENTER);
 
     wxString sourceLabel = value.source;
@@ -1119,11 +1359,7 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
     choices.Add(wxT("No display"));
     row.primitive = new wxChoice(scroll, wxID_ANY, wxDefaultPosition,
                                  wxDefaultSize, choices);
-    row.primitive->SetSelection(value.category == wxT("Vessel")
-                                    ? SelectionFromPrimitive(
-                                          BoatInfoValue::PRIMITIVE_NONE)
-                                    : SelectionFromPrimitive(value.primitive));
-    if (value.category == wxT("Vessel")) row.primitive->Enable(false);
+    row.primitive->SetSelection(SelectionFromPrimitive(value.primitive));
     grid->Add(row.primitive, 0, wxEXPAND);
 
     wxStaticText* pathText = new wxStaticText(scroll, wxID_ANY, value.path);
@@ -1132,13 +1368,6 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
     rows.push_back(row);
   }
 
-  if (rows.empty()) {
-    grid->Add(new wxStaticText(
-                  scroll, wxID_ANY,
-                  wxT("No values observed yet. Return after OpenCPN or Signal K "
-                      "has delivered own-vessel data.")),
-              0, wxEXPAND | wxALL, dialog.FromDIP(8));
-  }
   scroll->SetSizer(grid);
   root->Add(scroll, 1, wxEXPAND | wxLEFT | wxRIGHT, dialog.FromDIP(12));
 
@@ -1152,9 +1381,25 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
   dialog.CentreOnParent();
 
   if (dialog.ShowModal() == wxID_OK) {
+    m_manualVesselName = manualName->GetValue();
+    m_manualMmsi = manualMmsi->GetValue();
+    m_manualCallSign = manualCallSign->GetValue();
     ApplyPreferenceRows(rows);
+
+    const wxString keys[] = {kIdentityNameKey, kIdentityMmsiKey,
+                             kIdentityCallSignKey};
+    for (size_t i = 0; i < 3; ++i) {
+      BoatInfoValue& value = m_values[keys[i]];
+      if (value.manualFallback) {
+        value.valid = false;
+        value.manualFallback = false;
+        value.textValue.clear();
+      }
+    }
+    ApplyIdentityFallbacks();
     SaveConfiguration();
     RebuildInstrumentGrid();
+    UpdateVesselHeader();
   }
 }
 
@@ -1164,14 +1409,8 @@ void boatinfo_pi::ApplyPreferenceRows(const std::vector<PreferenceRow>& rows) {
         m_values.find(rows[i].key);
     if (found == m_values.end()) continue;
     BoatInfoValue& value = found->second;
-    if (value.category == wxT("Vessel")) {
-      value.visible = true;
-      value.primitive = BoatInfoValue::PRIMITIVE_NONE;
-    } else {
-      value.visible = rows[i].visible->GetValue();
-      value.primitive =
-          PrimitiveFromSelection(rows[i].primitive->GetSelection());
-    }
+    value.visible = rows[i].visible->GetValue();
+    value.primitive = PrimitiveFromSelection(rows[i].primitive->GetSelection());
     const wxString enteredLabel = rows[i].label->GetValue();
     value.label = enteredLabel.IsEmpty() ? value.suggestedLabel : enteredLabel;
     value.labelCustomized = value.label != value.suggestedLabel;
@@ -1182,14 +1421,33 @@ void boatinfo_pi::ApplyPreferenceRows(const std::vector<PreferenceRow>& rows) {
 void boatinfo_pi::LoadConfiguration() {
   if (m_configLoaded) return;
   m_configLoaded = true;
+  m_profileKey = wxT("default");
+  LoadProfile(m_profileKey, true);
+}
+
+void boatinfo_pi::LoadProfile(const wxString& profileKey, bool allowLegacy) {
   wxFileConfig* config = GetOCPNConfigObject();
   if (!config) return;
 
-  config->SetPath(wxT("/Plugins/BoatInfo"));
+  const wxString profilePath = wxT("/Plugins/BoatInfo/Profiles/") + profileKey;
+  config->SetPath(profilePath);
+  config->Read(wxT("ManualName"), &m_manualVesselName, wxEmptyString);
+  config->Read(wxT("ManualMMSI"), &m_manualMmsi, wxEmptyString);
+  config->Read(wxT("ManualCallSign"), &m_manualCallSign, wxEmptyString);
+
   long count = 0;
-  config->Read(wxT("InstrumentCount"), &count, 0L);
+  bool hasCount = config->Read(wxT("InstrumentCount"), &count);
+  wxString basePath = profilePath;
+  if (!hasCount && allowLegacy) {
+    config->SetPath(wxT("/Plugins/BoatInfo"));
+    hasCount = config->Read(wxT("InstrumentCount"), &count);
+    basePath = wxT("/Plugins/BoatInfo");
+  }
+  if (!hasCount) return;
+
   for (long i = 0; i < count; ++i) {
-    config->SetPath(wxString::Format(wxT("/Plugins/BoatInfo/Instrument%ld"), i));
+    config->SetPath(basePath +
+                    wxString::Format(wxT("/Instrument%ld"), i));
     wxString key, source, path, label, savedSuggestion;
     long primitive = 0;
     bool visible = false;
@@ -1209,34 +1467,42 @@ void boatinfo_pi::LoadConfiguration() {
     if (primitive >= BoatInfoValue::PRIMITIVE_VALUE &&
         primitive <= BoatInfoValue::PRIMITIVE_NONE)
       value.primitive = static_cast<BoatInfoValue::Primitive>(primitive);
-
-    if (!savedSuggestion.IsEmpty()) {
+    if (!savedSuggestion.IsEmpty())
       value.labelCustomized = labelCustomized;
-    } else {
+    else
       value.labelCustomized = !label.IsEmpty() && !IsLegacyAutoLabel(label);
-    }
     ApplySemanticDefaults(value);
     if (value.labelCustomized && !label.IsEmpty()) value.label = label;
     value.valid = false;
     value.stale = false;
+    value.manualFallback = false;
   }
-  config->SetPath(wxT("/Plugins/BoatInfo"));
 }
 
-void boatinfo_pi::SaveConfiguration() {
-  wxFileConfig* config = GetOCPNConfigObject();
+void boatinfo_pi::SaveProfile(wxFileConfig* config,
+                              const wxString& profileKey) {
   if (!config) return;
+  const wxString profilePath = wxT("/Plugins/BoatInfo/Profiles/") + profileKey;
+  config->SetPath(profilePath);
+  config->Write(wxT("SignalKSelf"), m_signalKSelf);
+  config->Write(wxT("ManualName"), m_manualVesselName);
+  config->Write(wxT("ManualMMSI"), m_manualMmsi);
+  config->Write(wxT("ManualCallSign"), m_manualCallSign);
 
-  config->SetPath(wxT("/Plugins"));
-  config->DeleteGroup(wxT("BoatInfo"));
-  config->SetPath(wxT("/Plugins/BoatInfo"));
-  config->Write(wxT("InstrumentCount"), static_cast<long>(m_values.size()));
+  long count = 0;
+  for (std::map<wxString, BoatInfoValue>::const_iterator it = m_values.begin();
+       it != m_values.end(); ++it) {
+    if (!IsIdentityPath(it->second.path)) ++count;
+  }
+  config->Write(wxT("InstrumentCount"), count);
+
   long index = 0;
   for (std::map<wxString, BoatInfoValue>::const_iterator it = m_values.begin();
-       it != m_values.end(); ++it, ++index) {
+       it != m_values.end(); ++it) {
     const BoatInfoValue& value = it->second;
-    config->SetPath(
-        wxString::Format(wxT("/Plugins/BoatInfo/Instrument%ld"), index));
+    if (IsIdentityPath(value.path)) continue;
+    config->SetPath(profilePath +
+                    wxString::Format(wxT("/Instrument%ld"), index++));
     config->Write(wxT("Key"), value.key);
     config->Write(wxT("Source"), value.source);
     config->Write(wxT("Path"), value.path);
@@ -1246,11 +1512,19 @@ void boatinfo_pi::SaveConfiguration() {
     config->Write(wxT("Visible"), value.visible);
     config->Write(wxT("Primitive"), static_cast<long>(value.primitive));
   }
+}
+
+void boatinfo_pi::SaveConfiguration() {
+  wxFileConfig* config = GetOCPNConfigObject();
+  if (!config) return;
+  SaveProfile(config, m_profileKey);
   config->SetPath(wxT("/Plugins/BoatInfo"));
+  config->Write(wxT("LastProfile"), m_profileKey);
   config->Flush();
 }
 
 void boatinfo_pi::ClearControlPointers() {
+  m_vesselPanel = nullptr;
   m_instrumentScroll = nullptr;
   m_instrumentGrid = nullptr;
   m_emptyHint = nullptr;
