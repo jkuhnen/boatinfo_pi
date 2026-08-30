@@ -15,6 +15,7 @@
 #include <wx/scrolwin.h>
 #include <wx/settings.h>
 #include <wx/sizer.h>
+#include <wx/statline.h>
 #include <wx/stattext.h>
 #include <wx/textctrl.h>
 #include <wx/timer.h>
@@ -168,12 +169,12 @@ int SelectionFromPrimitive(BoatInfoValue::Primitive primitive) {
 }
 
 int CategoryRank(const wxString& category) {
-  if (category == wxT("Navigation")) return 0;
-  if (category == wxT("Electrical")) return 1;
-  if (category == wxT("Tanks")) return 2;
-  if (category == wxT("Propulsion")) return 3;
-  if (category == wxT("Environment")) return 4;
-  if (category == wxT("Vessel")) return 5;
+  if (category == wxT("Vessel")) return 0;
+  if (category == wxT("Navigation")) return 1;
+  if (category == wxT("Electrical")) return 2;
+  if (category == wxT("Tanks")) return 3;
+  if (category == wxT("Propulsion")) return 4;
+  if (category == wxT("Environment")) return 5;
   return 6;
 }
 
@@ -252,11 +253,11 @@ public:
 
 private:
   void UpdateMinimumHeight() {
-    int height = 52;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_NONE) height = 34;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_LEVEL) height = 66;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_TAPE) height = 82;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_TREND) height = 72;
+    int height = 44;
+    if (m_model.primitive == BoatInfoValue::PRIMITIVE_NONE) height = 28;
+    if (m_model.primitive == BoatInfoValue::PRIMITIVE_LEVEL) height = 56;
+    if (m_model.primitive == BoatInfoValue::PRIMITIVE_TAPE) height = 72;
+    if (m_model.primitive == BoatInfoValue::PRIMITIVE_TREND) height = 62;
     SetMinSize(wxSize(-1, FromDIP(height)));
   }
 
@@ -268,7 +269,7 @@ private:
     dc.Clear();
 
     const wxSize size = GetClientSize();
-    const int pad = FromDIP(6);
+    const int pad = FromDIP(5);
     const wxString label =
         m_model.label.IsEmpty() ? m_model.suggestedLabel : m_model.label;
     wxString rendered = m_model.hasNumericValue ? FormatNumber(m_model)
@@ -276,61 +277,67 @@ private:
     if (!m_model.valid || rendered.IsEmpty()) rendered = wxT("—");
     const wxString unit = UnitWithQualifier(m_model);
 
+    wxFont labelFont = GetFont();
+    labelFont.SetPointSize(std::max(8, labelFont.GetPointSize() - 1));
+    labelFont.SetWeight(wxFONTWEIGHT_BOLD);
+
     if (m_model.primitive == BoatInfoValue::PRIMITIVE_NONE) {
-      wxFont labelFont = GetFont();
-      labelFont.SetWeight(wxFONTWEIGHT_BOLD);
       dc.SetFont(labelFont);
       dc.SetTextForeground(text);
-      dc.DrawText(label, pad, FromDIP(7));
+      dc.DrawText(label, pad, FromDIP(5));
 
       wxString compact = rendered;
       if (m_model.valid && !unit.IsEmpty()) compact += wxT(" ") + unit;
-      dc.SetFont(GetFont());
+      wxFont compactFont = GetFont();
+      compactFont.SetPointSize(std::max(8, compactFont.GetPointSize() - 1));
+      dc.SetFont(compactFont);
       dc.SetTextForeground(m_model.stale ? secondary : text);
       wxCoord width = 0, height = 0;
       dc.GetTextExtent(compact, &width, &height);
       dc.DrawText(compact, std::max(pad, size.x - pad - static_cast<int>(width)),
-                  FromDIP(7));
+                  FromDIP(5));
       return;
     }
 
-    wxFont labelFont = GetFont();
-    labelFont.SetWeight(wxFONTWEIGHT_BOLD);
     dc.SetFont(labelFont);
     dc.SetTextForeground(text);
-    dc.DrawText(label, pad, FromDIP(1));
+    dc.DrawText(label, pad, 0);
 
     wxFont valueFont = GetFont();
-    valueFont.SetPointSize(std::max(13, valueFont.GetPointSize() + 6));
+    valueFont.SetPointSize(std::max(12, valueFont.GetPointSize() + 4));
     valueFont.SetWeight(wxFONTWEIGHT_BOLD);
     dc.SetFont(valueFont);
     dc.SetTextForeground(m_model.stale ? secondary : text);
-    dc.DrawText(rendered, pad, FromDIP(17));
+    dc.DrawText(rendered, pad, FromDIP(14));
 
     wxCoord valueWidth = 0, valueHeight = 0;
     dc.GetTextExtent(rendered, &valueWidth, &valueHeight);
     if (m_model.valid && !unit.IsEmpty() &&
         !m_model.path.Lower().EndsWith(wxT("latitude")) &&
         !m_model.path.Lower().EndsWith(wxT("longitude"))) {
-      dc.SetFont(GetFont());
+      wxFont unitFont = GetFont();
+      unitFont.SetPointSize(std::max(8, unitFont.GetPointSize() - 1));
+      dc.SetFont(unitFont);
       dc.SetTextForeground(text);
-      dc.DrawText(unit, pad + valueWidth + FromDIP(4), FromDIP(27));
+      dc.DrawText(unit, pad + valueWidth + FromDIP(4), FromDIP(22));
     }
 
     if (!m_model.valid || m_model.stale) {
-      dc.SetFont(GetFont());
+      wxFont stateFont = GetFont();
+      stateFont.SetPointSize(std::max(8, stateFont.GetPointSize() - 1));
+      dc.SetFont(stateFont);
       dc.SetTextForeground(secondary);
       dc.DrawText(m_model.stale ? wxT("STALE") : wxT("NO DATA"),
-                  std::max(pad, size.x - FromDIP(52)), FromDIP(2));
+                  std::max(pad, size.x - FromDIP(48)), 0);
     }
     if (!m_model.valid) return;
 
-    const int graphTop = FromDIP(45);
+    const int graphTop = FromDIP(38);
     if (m_model.primitive == BoatInfoValue::PRIMITIVE_LEVEL &&
         m_model.hasNumericValue && m_model.maximum > m_model.minimum) {
-      const int y = graphTop + FromDIP(2);
+      const int y = graphTop + FromDIP(1);
       const int width = std::max(1, size.x - 2 * pad);
-      const int height = FromDIP(6);
+      const int height = FromDIP(5);
       dc.SetPen(wxPen(secondary));
       dc.SetBrush(*wxTRANSPARENT_BRUSH);
       dc.DrawRectangle(pad, y, width, height);
@@ -343,13 +350,15 @@ private:
     } else if (m_model.primitive == BoatInfoValue::PRIMITIVE_TAPE &&
                m_model.hasNumericValue) {
       const int center = size.x / 2;
-      const int y = graphTop + FromDIP(5);
+      const int y = graphTop + FromDIP(4);
       dc.SetPen(wxPen(secondary));
       dc.DrawLine(pad, y, size.x - pad, y);
       dc.SetPen(wxPen(m_model.stale ? secondary : text,
                       std::max(1, FromDIP(2))));
-      dc.DrawLine(center, y - FromDIP(6), center, y + FromDIP(6));
-      dc.SetFont(GetFont());
+      dc.DrawLine(center, y - FromDIP(5), center, y + FromDIP(5));
+      wxFont tapeFont = GetFont();
+      tapeFont.SetPointSize(std::max(8, tapeFont.GetPointSize() - 1));
+      dc.SetFont(tapeFont);
       dc.SetTextForeground(text);
       for (int offset = -2; offset <= 2; ++offset) {
         double tick = m_model.displayValue + offset * 10.0;
@@ -357,15 +366,15 @@ private:
         while (tick >= 360.0) tick -= 360.0;
         const int x = center + offset * FromDIP(42);
         dc.DrawLine(x, y - FromDIP(3), x, y + FromDIP(3));
-        dc.DrawText(wxString::Format(wxT("%.0f"), tick), x - FromDIP(9),
-                    y + FromDIP(5));
+        dc.DrawText(wxString::Format(wxT("%.0f"), tick), x - FromDIP(8),
+                    y + FromDIP(4));
       }
     } else if (m_model.primitive == BoatInfoValue::PRIMITIVE_TREND &&
                m_model.trend.size() > 1) {
       const int left = pad;
       const int right = size.x - pad;
       const int top = graphTop;
-      const int bottom = size.y - FromDIP(5);
+      const int bottom = size.y - FromDIP(4);
       double minValue = *std::min_element(m_model.trend.begin(),
                                           m_model.trend.end());
       double maxValue = *std::max_element(m_model.trend.begin(),
@@ -402,6 +411,21 @@ boatinfo_pi::~boatinfo_pi() = default;
 
 int boatinfo_pi::Init() {
   LoadConfiguration();
+
+  BoatInfoValue& vesselName =
+      EnsureValue(wxT("signalk:name"), wxT("Signal K"), wxT("name"));
+  vesselName.visible = true;
+  vesselName.primitive = BoatInfoValue::PRIMITIVE_NONE;
+  BoatInfoValue& vesselMmsi =
+      EnsureValue(wxT("signalk:mmsi"), wxT("Signal K"), wxT("mmsi"));
+  vesselMmsi.visible = true;
+  vesselMmsi.primitive = BoatInfoValue::PRIMITIVE_NONE;
+  BoatInfoValue& vesselCallsign = EnsureValue(
+      wxT("signalk:communication.callsignVhf"), wxT("Signal K"),
+      wxT("communication.callsignVhf"));
+  vesselCallsign.visible = true;
+  vesselCallsign.primitive = BoatInfoValue::PRIMITIVE_NONE;
+
   m_auiManager = GetFrameAuiManager();
   if (!m_auiManager || !m_auiManager->GetManagedWindow()) return 0;
 
@@ -448,28 +472,30 @@ int boatinfo_pi::Init() {
 
 void boatinfo_pi::BuildMainPanel() {
   if (!m_panel) return;
-  const int outer = m_panel->FromDIP(8);
+  const int outer = m_panel->FromDIP(7);
   wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
 
   wxStaticText* title = new wxStaticText(m_panel, wxID_ANY, wxT("BoatInfo"));
   wxFont titleFont = title->GetFont();
   titleFont.SetWeight(wxFONTWEIGHT_BOLD);
-  titleFont.SetPointSize(titleFont.GetPointSize() + 2);
+  titleFont.SetPointSize(titleFont.GetPointSize() + 1);
   title->SetFont(titleFont);
   root->Add(title, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, outer);
 
   m_instrumentScroll = new wxScrolledWindow(
-      m_panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
+      m_panel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
+      wxVSCROLL | wxBORDER_NONE);
   m_instrumentScroll->SetScrollRate(0, m_panel->FromDIP(16));
-  m_instrumentGrid = new wxFlexGridSizer(1, m_panel->FromDIP(2), 0);
+  m_instrumentScroll->ShowScrollbars(wxSHOW_SB_NEVER, wxSHOW_SB_NEVER);
+  m_instrumentGrid = new wxFlexGridSizer(1, m_panel->FromDIP(1), 0);
   m_instrumentGrid->AddGrowableCol(0, 1);
   m_instrumentScroll->SetSizer(m_instrumentGrid);
   root->Add(m_instrumentScroll, 1, wxEXPAND | wxLEFT | wxRIGHT,
-            m_panel->FromDIP(4));
+            m_panel->FromDIP(3));
 
   wxBoxSizer* footer = new wxBoxSizer(wxHORIZONTAL);
   footer->Add(new wxStaticText(m_panel, wxID_ANY, wxT("Data:")), 0,
-              wxALIGN_CENTER_VERTICAL | wxRIGHT, m_panel->FromDIP(5));
+              wxALIGN_CENTER_VERTICAL | wxRIGHT, m_panel->FromDIP(4));
   m_dataSourceValue = new wxStaticText(m_panel, wxID_ANY, wxT("Waiting"));
   footer->Add(m_dataSourceValue, 1, wxALIGN_CENTER_VERTICAL);
   root->Add(footer, 0, wxEXPAND | wxALL, outer);
@@ -503,18 +529,24 @@ void boatinfo_pi::RebuildInstrumentGrid() {
           m_instrumentScroll, wxID_ANY, currentCategory.Upper());
       wxFont categoryFont = category->GetFont();
       categoryFont.SetWeight(wxFONTWEIGHT_BOLD);
-      categoryFont.SetPointSize(categoryFont.GetPointSize() + 1);
       category->SetFont(categoryFont);
       category->SetForegroundColour(text);
       m_instrumentGrid->Add(category, 0,
-                            wxEXPAND | wxLEFT | wxRIGHT | wxTOP | wxBOTTOM,
-                            m_panel->FromDIP(6));
+                            wxEXPAND | wxLEFT | wxRIGHT | wxTOP,
+                            m_panel->FromDIP(5));
+
+      wxStaticLine* divider =
+          new wxStaticLine(m_instrumentScroll, wxID_ANY, wxDefaultPosition,
+                           wxDefaultSize, wxLI_HORIZONTAL);
+      divider->SetForegroundColour(secondary);
+      m_instrumentGrid->Add(divider, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM,
+                            m_panel->FromDIP(5));
     }
 
     BoatInfoInstrumentPanel* panel =
         new BoatInfoInstrumentPanel(m_instrumentScroll, value);
     m_instrumentGrid->Add(panel, 0, wxEXPAND | wxLEFT | wxRIGHT,
-                          m_panel->FromDIP(2));
+                          m_panel->FromDIP(1));
     m_instruments[value.key] = panel;
   }
 
@@ -627,20 +659,20 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
     value.category = wxT("Vessel");
     suggestion = wxT("Vessel name");
     value.freshnessSeconds = 300;
-    if (!configured) {
-      value.visible = true;
-      value.primitive = BoatInfoValue::PRIMITIVE_NONE;
-    }
+    value.visible = true;
+    value.primitive = BoatInfoValue::PRIMITIVE_NONE;
   } else if (path == wxT("mmsi")) {
     value.category = wxT("Vessel");
     suggestion = wxT("MMSI");
     value.freshnessSeconds = 300;
-    if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_NONE;
+    value.visible = true;
+    value.primitive = BoatInfoValue::PRIMITIVE_NONE;
   } else if (path == wxT("communication.callsignvhf")) {
     value.category = wxT("Vessel");
     suggestion = wxT("Call sign");
     value.freshnessSeconds = 300;
-    if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_NONE;
+    value.visible = true;
+    value.primitive = BoatInfoValue::PRIMITIVE_NONE;
   } else if (path.StartsWith(wxT("electrical.batteries."))) {
     value.category = wxT("Electrical");
     const wxString battery = BatteryName(path);
@@ -1016,7 +1048,8 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
       &dialog, wxID_ANY,
       wxT("BoatInfo learns own-vessel values as they are observed. Choose what "
           "is shown, edit the suggested name and select the digital "
-          "presentation. OpenCPN navigation values are preferred by default "
+          "presentation. Vessel identity (name, MMSI and call sign) is always "
+          "shown first. OpenCPN navigation values are preferred by default "
           "when the same navigation quantity also arrives through Signal K."));
   intro->Wrap(dialog.FromDIP(790));
   root->Add(intro, 0, wxEXPAND | wxALL, dialog.FromDIP(12));
@@ -1060,7 +1093,9 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
     PreferenceRow row;
     row.key = value.key;
     row.visible = new wxCheckBox(scroll, wxID_ANY, wxEmptyString);
-    row.visible->SetValue(value.visible);
+    row.visible->SetValue(value.category == wxT("Vessel") ? true
+                                                          : value.visible);
+    if (value.category == wxT("Vessel")) row.visible->Enable(false);
     grid->Add(row.visible, 0, wxALIGN_CENTER);
 
     wxString sourceLabel = value.source;
@@ -1084,7 +1119,11 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
     choices.Add(wxT("No display"));
     row.primitive = new wxChoice(scroll, wxID_ANY, wxDefaultPosition,
                                  wxDefaultSize, choices);
-    row.primitive->SetSelection(SelectionFromPrimitive(value.primitive));
+    row.primitive->SetSelection(value.category == wxT("Vessel")
+                                    ? SelectionFromPrimitive(
+                                          BoatInfoValue::PRIMITIVE_NONE)
+                                    : SelectionFromPrimitive(value.primitive));
+    if (value.category == wxT("Vessel")) row.primitive->Enable(false);
     grid->Add(row.primitive, 0, wxEXPAND);
 
     wxStaticText* pathText = new wxStaticText(scroll, wxID_ANY, value.path);
@@ -1125,12 +1164,17 @@ void boatinfo_pi::ApplyPreferenceRows(const std::vector<PreferenceRow>& rows) {
         m_values.find(rows[i].key);
     if (found == m_values.end()) continue;
     BoatInfoValue& value = found->second;
-    value.visible = rows[i].visible->GetValue();
+    if (value.category == wxT("Vessel")) {
+      value.visible = true;
+      value.primitive = BoatInfoValue::PRIMITIVE_NONE;
+    } else {
+      value.visible = rows[i].visible->GetValue();
+      value.primitive =
+          PrimitiveFromSelection(rows[i].primitive->GetSelection());
+    }
     const wxString enteredLabel = rows[i].label->GetValue();
     value.label = enteredLabel.IsEmpty() ? value.suggestedLabel : enteredLabel;
     value.labelCustomized = value.label != value.suggestedLabel;
-    value.primitive =
-        PrimitiveFromSelection(rows[i].primitive->GetSelection());
     value.userConfigured = true;
   }
 }
