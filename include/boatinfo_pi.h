@@ -47,6 +47,7 @@ struct BoatInfoValue {
 
   bool valid = false;
   bool stale = false;
+  bool manualFallback = false;
   long long lastUpdateSeconds = 0;
   int freshnessSeconds = 30;
 
@@ -100,10 +101,14 @@ private:
   void BuildMainPanel();
   void RebuildInstrumentGrid();
   void LoadConfiguration();
+  void LoadProfile(const wxString& profileKey, bool allowLegacy);
   void SaveConfiguration();
   void ApplyPreferenceRows(const std::vector<PreferenceRow>& rows);
   void RefreshFreshness();
   void UpdateSourceSummary();
+  void EnsureIdentityValues();
+  void ApplyIdentityFallbacks();
+  void ActivateVesselProfile(const wxString& signalKSelf);
 
   bool ParseSignalK(const wxString& message);
   bool ObserveSignalKPath(const wxString& path, const wxJSONValue& value);
@@ -132,6 +137,10 @@ private:
   std::map<wxString, BoatInfoValue> m_values;
   std::map<wxString, BoatInfoInstrumentPanel*> m_instruments;
   wxString m_signalKSelf;
+  wxString m_profileKey = wxT("default");
+  wxString m_manualVesselName;
+  wxString m_manualMmsi;
+  wxString m_manualCallSign;
   bool m_configLoaded = false;
   bool m_seenOpenCPN = false;
   bool m_seenSignalK = false;
