@@ -132,10 +132,9 @@ bool IsLegacyAutoLabel(const wxString& label) {
          lower == wxT("speed over ground") ||
          lower == wxT("discharge since full") ||
          lower == wxT("time remaining") ||
-         lower == wxT("antenna altitude") ||
-         lower == wxT("datetime") || lower == wxT("latitude") ||
-         lower == wxT("longitude") || lower == wxT("cog") ||
-         lower == wxT("sog");
+         lower == wxT("antenna altitude") || lower == wxT("datetime") ||
+         lower == wxT("latitude") || lower == wxT("longitude") ||
+         lower == wxT("cog") || lower == wxT("sog");
 }
 
 BoatInfoValue::Primitive PrimitiveFromSelection(int selection) {
@@ -215,6 +214,18 @@ void ResolveHostColours(wxColour& background, wxColour& text,
   if (!GetGlobalColor(wxT("UIBCK"), &accent)) accent = text;
 }
 
+void ApplyColoursRecursive(wxWindow* window, const wxColour& background,
+                           const wxColour& text) {
+  if (!window) return;
+  window->SetBackgroundColour(background);
+  window->SetForegroundColour(text);
+  const wxWindowList& children = window->GetChildren();
+  for (wxWindowList::compatibility_iterator node = children.GetFirst(); node;
+       node = node->GetNext())
+    ApplyColoursRecursive(node->GetData(), background, text);
+  window->Refresh(false);
+}
+
 wxString UnitWithQualifier(const BoatInfoValue& value) {
   if (value.qualifier.IsEmpty()) return value.unit;
   if (value.unit.IsEmpty()) return value.qualifier;
@@ -241,11 +252,11 @@ public:
 
 private:
   void UpdateMinimumHeight() {
-    int height = 70;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_NONE) height = 40;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_LEVEL) height = 86;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_TAPE) height = 98;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_TREND) height = 88;
+    int height = 52;
+    if (m_model.primitive == BoatInfoValue::PRIMITIVE_NONE) height = 34;
+    if (m_model.primitive == BoatInfoValue::PRIMITIVE_LEVEL) height = 66;
+    if (m_model.primitive == BoatInfoValue::PRIMITIVE_TAPE) height = 82;
+    if (m_model.primitive == BoatInfoValue::PRIMITIVE_TREND) height = 72;
     SetMinSize(wxSize(-1, FromDIP(height)));
   }
 
@@ -257,7 +268,7 @@ private:
     dc.Clear();
 
     const wxSize size = GetClientSize();
-    const int pad = FromDIP(8);
+    const int pad = FromDIP(6);
     const wxString label =
         m_model.label.IsEmpty() ? m_model.suggestedLabel : m_model.label;
     wxString rendered = m_model.hasNumericValue ? FormatNumber(m_model)
@@ -269,8 +280,8 @@ private:
       wxFont labelFont = GetFont();
       labelFont.SetWeight(wxFONTWEIGHT_BOLD);
       dc.SetFont(labelFont);
-      dc.SetTextForeground(secondary);
-      dc.DrawText(label, pad, FromDIP(8));
+      dc.SetTextForeground(text);
+      dc.DrawText(label, pad, FromDIP(7));
 
       wxString compact = rendered;
       if (m_model.valid && !unit.IsEmpty()) compact += wxT(" ") + unit;
@@ -279,24 +290,22 @@ private:
       wxCoord width = 0, height = 0;
       dc.GetTextExtent(compact, &width, &height);
       dc.DrawText(compact, std::max(pad, size.x - pad - static_cast<int>(width)),
-                  FromDIP(8));
-      if (m_model.stale)
-        dc.DrawText(wxT("STALE"), pad, FromDIP(24));
+                  FromDIP(7));
       return;
     }
 
     wxFont labelFont = GetFont();
     labelFont.SetWeight(wxFONTWEIGHT_BOLD);
     dc.SetFont(labelFont);
-    dc.SetTextForeground(secondary);
-    dc.DrawText(label, pad, FromDIP(3));
+    dc.SetTextForeground(text);
+    dc.DrawText(label, pad, FromDIP(1));
 
     wxFont valueFont = GetFont();
-    valueFont.SetPointSize(std::max(14, valueFont.GetPointSize() + 7));
+    valueFont.SetPointSize(std::max(13, valueFont.GetPointSize() + 6));
     valueFont.SetWeight(wxFONTWEIGHT_BOLD);
     dc.SetFont(valueFont);
     dc.SetTextForeground(m_model.stale ? secondary : text);
-    dc.DrawText(rendered, pad, FromDIP(20));
+    dc.DrawText(rendered, pad, FromDIP(17));
 
     wxCoord valueWidth = 0, valueHeight = 0;
     dc.GetTextExtent(rendered, &valueWidth, &valueHeight);
@@ -304,28 +313,24 @@ private:
         !m_model.path.Lower().EndsWith(wxT("latitude")) &&
         !m_model.path.Lower().EndsWith(wxT("longitude"))) {
       dc.SetFont(GetFont());
-      dc.SetTextForeground(secondary);
-      dc.DrawText(unit, pad + valueWidth + FromDIP(5), FromDIP(32));
+      dc.SetTextForeground(text);
+      dc.DrawText(unit, pad + valueWidth + FromDIP(4), FromDIP(27));
     }
 
-    const int graphTop = FromDIP(56);
-    if (!m_model.valid) {
+    if (!m_model.valid || m_model.stale) {
       dc.SetFont(GetFont());
       dc.SetTextForeground(secondary);
-      dc.DrawText(wxT("NO DATA"), pad, graphTop);
-      return;
+      dc.DrawText(m_model.stale ? wxT("STALE") : wxT("NO DATA"),
+                  std::max(pad, size.x - FromDIP(52)), FromDIP(2));
     }
-    if (m_model.stale) {
-      dc.SetFont(GetFont());
-      dc.SetTextForeground(secondary);
-      dc.DrawText(wxT("STALE"), std::max(pad, size.x - FromDIP(45)), FromDIP(4));
-    }
+    if (!m_model.valid) return;
 
+    const int graphTop = FromDIP(45);
     if (m_model.primitive == BoatInfoValue::PRIMITIVE_LEVEL &&
         m_model.hasNumericValue && m_model.maximum > m_model.minimum) {
-      const int y = graphTop + FromDIP(4);
+      const int y = graphTop + FromDIP(2);
       const int width = std::max(1, size.x - 2 * pad);
-      const int height = FromDIP(7);
+      const int height = FromDIP(6);
       dc.SetPen(wxPen(secondary));
       dc.SetBrush(*wxTRANSPARENT_BRUSH);
       dc.DrawRectangle(pad, y, width, height);
@@ -338,14 +343,14 @@ private:
     } else if (m_model.primitive == BoatInfoValue::PRIMITIVE_TAPE &&
                m_model.hasNumericValue) {
       const int center = size.x / 2;
-      const int y = graphTop + FromDIP(7);
+      const int y = graphTop + FromDIP(5);
       dc.SetPen(wxPen(secondary));
       dc.DrawLine(pad, y, size.x - pad, y);
       dc.SetPen(wxPen(m_model.stale ? secondary : text,
                       std::max(1, FromDIP(2))));
-      dc.DrawLine(center, y - FromDIP(7), center, y + FromDIP(7));
+      dc.DrawLine(center, y - FromDIP(6), center, y + FromDIP(6));
       dc.SetFont(GetFont());
-      dc.SetTextForeground(secondary);
+      dc.SetTextForeground(text);
       for (int offset = -2; offset <= 2; ++offset) {
         double tick = m_model.displayValue + offset * 10.0;
         while (tick < 0.0) tick += 360.0;
@@ -353,14 +358,14 @@ private:
         const int x = center + offset * FromDIP(42);
         dc.DrawLine(x, y - FromDIP(3), x, y + FromDIP(3));
         dc.DrawText(wxString::Format(wxT("%.0f"), tick), x - FromDIP(9),
-                    y + FromDIP(6));
+                    y + FromDIP(5));
       }
     } else if (m_model.primitive == BoatInfoValue::PRIMITIVE_TREND &&
                m_model.trend.size() > 1) {
       const int left = pad;
       const int right = size.x - pad;
       const int top = graphTop;
-      const int bottom = size.y - FromDIP(6);
+      const int bottom = size.y - FromDIP(5);
       double minValue = *std::min_element(m_model.trend.begin(),
                                           m_model.trend.end());
       double maxValue = *std::max_element(m_model.trend.begin(),
@@ -443,8 +448,7 @@ int boatinfo_pi::Init() {
 
 void boatinfo_pi::BuildMainPanel() {
   if (!m_panel) return;
-  const int outer = m_panel->FromDIP(10);
-  const int gap = m_panel->FromDIP(4);
+  const int outer = m_panel->FromDIP(8);
   wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
 
   wxStaticText* title = new wxStaticText(m_panel, wxID_ANY, wxT("BoatInfo"));
@@ -452,11 +456,16 @@ void boatinfo_pi::BuildMainPanel() {
   titleFont.SetWeight(wxFONTWEIGHT_BOLD);
   titleFont.SetPointSize(titleFont.GetPointSize() + 2);
   title->SetFont(titleFont);
-  root->Add(title, 0, wxLEFT | wxRIGHT | wxTOP, outer);
+  root->Add(title, 0, wxLEFT | wxRIGHT | wxTOP | wxBOTTOM, outer);
 
-  m_instrumentGrid = new wxFlexGridSizer(1, gap, gap);
+  m_instrumentScroll = new wxScrolledWindow(
+      m_panel, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
+  m_instrumentScroll->SetScrollRate(0, m_panel->FromDIP(16));
+  m_instrumentGrid = new wxFlexGridSizer(1, m_panel->FromDIP(2), 0);
   m_instrumentGrid->AddGrowableCol(0, 1);
-  root->Add(m_instrumentGrid, 1, wxEXPAND | wxLEFT | wxRIGHT | wxTOP, outer);
+  m_instrumentScroll->SetSizer(m_instrumentGrid);
+  root->Add(m_instrumentScroll, 1, wxEXPAND | wxLEFT | wxRIGHT,
+            m_panel->FromDIP(4));
 
   wxBoxSizer* footer = new wxBoxSizer(wxHORIZONTAL);
   footer->Add(new wxStaticText(m_panel, wxID_ANY, wxT("Data:")), 0,
@@ -471,7 +480,7 @@ void boatinfo_pi::BuildMainPanel() {
 }
 
 void boatinfo_pi::RebuildInstrumentGrid() {
-  if (!m_panel || !m_instrumentGrid) return;
+  if (!m_panel || !m_instrumentScroll || !m_instrumentGrid) return;
   m_instrumentGrid->Clear(true);
   m_instruments.clear();
   m_emptyHint = nullptr;
@@ -483,23 +492,45 @@ void boatinfo_pi::RebuildInstrumentGrid() {
   }
   std::sort(visible.begin(), visible.end(), ValueOrder);
 
+  wxColour background, text, secondary, accent;
+  ResolveHostColours(background, text, secondary, accent);
+  wxString currentCategory;
   for (size_t i = 0; i < visible.size(); ++i) {
     const BoatInfoValue& value = *visible[i];
-    BoatInfoInstrumentPanel* panel = new BoatInfoInstrumentPanel(m_panel, value);
-    m_instrumentGrid->Add(panel, 0, wxEXPAND);
+    if (value.category != currentCategory) {
+      currentCategory = value.category;
+      wxStaticText* category = new wxStaticText(
+          m_instrumentScroll, wxID_ANY, currentCategory.Upper());
+      wxFont categoryFont = category->GetFont();
+      categoryFont.SetWeight(wxFONTWEIGHT_BOLD);
+      categoryFont.SetPointSize(categoryFont.GetPointSize() + 1);
+      category->SetFont(categoryFont);
+      category->SetForegroundColour(text);
+      m_instrumentGrid->Add(category, 0,
+                            wxEXPAND | wxLEFT | wxRIGHT | wxTOP | wxBOTTOM,
+                            m_panel->FromDIP(6));
+    }
+
+    BoatInfoInstrumentPanel* panel =
+        new BoatInfoInstrumentPanel(m_instrumentScroll, value);
+    m_instrumentGrid->Add(panel, 0, wxEXPAND | wxLEFT | wxRIGHT,
+                          m_panel->FromDIP(2));
     m_instruments[value.key] = panel;
   }
 
   if (visible.empty()) {
     m_emptyHint = new wxStaticText(
-        m_panel, wxID_ANY,
+        m_instrumentScroll, wxID_ANY,
         wxT("No values selected. Open BoatInfo preferences to choose from "
             "values observed on this vessel."));
     m_emptyHint->Wrap(m_panel->FromDIP(290));
     m_instrumentGrid->Add(m_emptyHint, 0, wxEXPAND | wxALL,
                           m_panel->FromDIP(6));
   }
+
   ApplyHostStyle();
+  m_instrumentScroll->Layout();
+  m_instrumentScroll->FitInside();
   m_panel->Layout();
 }
 
@@ -507,17 +538,7 @@ void boatinfo_pi::ApplyHostStyle() {
   if (!m_panel) return;
   wxColour background, text, secondary, accent;
   ResolveHostColours(background, text, secondary, accent);
-  m_panel->SetBackgroundColour(background);
-  m_panel->SetForegroundColour(text);
-  const wxWindowList& children = m_panel->GetChildren();
-  for (wxWindowList::compatibility_iterator node = children.GetFirst(); node;
-       node = node->GetNext()) {
-    wxWindow* child = node->GetData();
-    child->SetBackgroundColour(background);
-    child->SetForegroundColour(text);
-    child->Refresh(false);
-  }
-  m_panel->Refresh(false);
+  ApplyColoursRecursive(m_panel, background, text);
 }
 
 void boatinfo_pi::SetColorScheme(PI_ColorScheme cs) {
@@ -555,7 +576,6 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
   value.semanticId = path;
   value.alternativeSource = false;
   value.freshnessSeconds = 30;
-
   wxString suggestion = value.suggestedLabel;
 
   if (value.source == wxT("OpenCPN")) {
@@ -627,7 +647,6 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
     if (path.Find(wxT("stateofcharge")) != wxNOT_FOUND) {
       suggestion = battery + wxT(" SOC");
       value.unit = wxT("%");
-      value.semanticId = path;
       value.bounded = true;
       value.minimum = 0.0;
       value.maximum = 100.0;
@@ -827,12 +846,12 @@ void boatinfo_pi::ObserveNumeric(const wxString& key, const wxString& source,
 }
 
 void boatinfo_pi::ObserveText(const wxString& key, const wxString& source,
-                              const wxString& path, const wxString& text) {
+                              const wxString& path, const wxString& textValue) {
   const bool isNew = m_values.find(key) == m_values.end();
   BoatInfoValue& value = EnsureValue(key, source, path);
   value.hasNumericValue = false;
-  value.textValue = text;
-  value.valid = !text.IsEmpty();
+  value.textValue = textValue;
+  value.valid = !textValue.IsEmpty();
   value.stale = false;
   value.lastUpdateSeconds = NowSeconds();
   if (source == wxT("Signal K")) m_seenSignalK = true;
@@ -1188,6 +1207,7 @@ void boatinfo_pi::SaveConfiguration() {
 }
 
 void boatinfo_pi::ClearControlPointers() {
+  m_instrumentScroll = nullptr;
   m_instrumentGrid = nullptr;
   m_emptyHint = nullptr;
   m_dataSourceValue = nullptr;
