@@ -249,20 +249,29 @@ void BoatInfoDashboardPanel::DrawVessel(wxDC& dc, const wxRect& rect,
 
 void BoatInfoDashboardPanel::DrawValue(
     wxDC& dc, const wxRect& rect, const BoatInfoValue& value,
-    ResponsiveMode mode, const wxColour& text, const wxColour& secondary,
+    ResponsiveMode mode, const wxColour& text, const wxColour&,
     const wxColour&) {
   dc.SetClippingRegion(rect);
   const int pad = FromDIP(4);
   const wxString label = DisplayLabel(value, mode);
-  const wxString rendered = RenderedValue(value);
-  const wxString unit = UnitWithQualifier(value);
+  const bool displayValid = value.valid && !value.stale;
 
   wxFont labelFont = GetFont();
   labelFont.SetPointSize(std::max(7, labelFont.GetPointSize() - 2));
   labelFont.SetWeight(wxFONTWEIGHT_BOLD);
   dc.SetFont(labelFont);
-  dc.SetTextForeground(text);
+  dc.SetTextForeground(displayValid ? text : *wxWHITE);
   dc.DrawText(label, rect.x + pad, rect.y + FromDIP(1));
+
+  // Preserve the tile and category geometry, but never present a stale,
+  // unavailable or otherwise invalid measurement as a current value.
+  if (!displayValid) {
+    dc.DestroyClippingRegion();
+    return;
+  }
+
+  const wxString rendered = RenderedValue(value);
+  const wxString unit = UnitWithQualifier(value);
 
   wxFont valueFont = GetFont();
   valueFont.SetWeight(wxFONTWEIGHT_BOLD);
@@ -271,13 +280,13 @@ void BoatInfoDashboardPanel::DrawValue(
   else
     valueFont.SetPointSize(std::max(9, valueFont.GetPointSize()));
   dc.SetFont(valueFont);
-  dc.SetTextForeground(value.stale ? secondary : text);
+  dc.SetTextForeground(text);
   const int valueY = rect.y + FromDIP(15);
   dc.DrawText(rendered, rect.x + pad, valueY);
 
   wxCoord valueWidth = 0, valueHeight = 0;
   dc.GetTextExtent(rendered, &valueWidth, &valueHeight);
-  if (value.valid && !unit.IsEmpty() &&
+  if (!unit.IsEmpty() &&
       value.path.Lower().Find(wxT("latitude")) == wxNOT_FOUND &&
       value.path.Lower().Find(wxT("longitude")) == wxNOT_FOUND) {
     wxFont unitFont = GetFont();
@@ -286,18 +295,6 @@ void BoatInfoDashboardPanel::DrawValue(
     dc.SetTextForeground(text);
     dc.DrawText(unit, rect.x + pad + valueWidth + FromDIP(3),
                 valueY + FromDIP(2));
-  }
-
-  if (!value.valid || value.stale) {
-    wxFont stateFont = GetFont();
-    stateFont.SetPointSize(std::max(7, stateFont.GetPointSize() - 2));
-    dc.SetFont(stateFont);
-    dc.SetTextForeground(secondary);
-    const wxString state = value.stale ? wxT("STALE") : wxT("NO DATA");
-    wxCoord stateWidth = 0, stateHeight = 0;
-    dc.GetTextExtent(state, &stateWidth, &stateHeight);
-    dc.DrawText(state, rect.GetRight() - pad - static_cast<int>(stateWidth),
-                rect.y + FromDIP(1));
   }
 
   // Text-only baseline: no Level, Tape, Trend or analog geometry is rendered.
