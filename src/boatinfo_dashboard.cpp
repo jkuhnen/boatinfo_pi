@@ -1,7 +1,6 @@
 #include "boatinfo_dashboard.h"
 
 #include <algorithm>
-#include <cmath>
 
 #include <wx/dcbuffer.h>
 #include <wx/settings.h>
@@ -62,39 +61,30 @@ void BoatInfoDashboardPanel::SetState(
 }
 
 int BoatInfoDashboardPanel::HeaderHeight(ResponsiveMode mode) const {
-  return FromDIP(mode == MODE_MINIMAL ? 18 : 21);
+  if (mode == MODE_FULL) return FromDIP(20);
+  if (mode == MODE_COMPACT) return FromDIP(18);
+  return FromDIP(17);
 }
 
 int BoatInfoDashboardPanel::ContentRowHeight(ResponsiveMode mode) const {
-  if (mode == MODE_FULL) return FromDIP(52);
-  if (mode == MODE_COMPACT) return FromDIP(39);
-  return FromDIP(28);
+  if (mode == MODE_FULL) return FromDIP(36);
+  if (mode == MODE_COMPACT) return FromDIP(31);
+  return FromDIP(27);
 }
 
 int BoatInfoDashboardPanel::VesselWidth(ResponsiveMode mode) const {
-  if (mode == MODE_FULL) return FromDIP(210);
-  if (mode == MODE_COMPACT) return FromDIP(175);
+  if (mode == MODE_FULL) return FromDIP(205);
+  if (mode == MODE_COMPACT) return FromDIP(170);
   return FromDIP(125);
 }
 
-int BoatInfoDashboardPanel::ValueWidth(const BoatInfoValue& value,
+int BoatInfoDashboardPanel::ValueWidth(const BoatInfoValue&,
                                        ResponsiveMode mode) const {
-  if (mode == MODE_MINIMAL) return FromDIP(105);
-  if (mode == MODE_COMPACT) {
-    if (value.primitive == BoatInfoValue::PRIMITIVE_LEVEL ||
-        value.primitive == BoatInfoValue::PRIMITIVE_TAPE ||
-        value.primitive == BoatInfoValue::PRIMITIVE_TREND)
-      return FromDIP(145);
-    return FromDIP(122);
-  }
-  if (value.primitive == BoatInfoValue::PRIMITIVE_TAPE) return FromDIP(215);
-  if (value.primitive == BoatInfoValue::PRIMITIVE_LEVEL ||
-      value.primitive == BoatInfoValue::PRIMITIVE_TREND)
-    return FromDIP(180);
-  if (value.path.Lower().Find(wxT("latitude")) != wxNOT_FOUND ||
-      value.path.Lower().Find(wxT("longitude")) != wxNOT_FOUND)
-    return FromDIP(180);
-  return FromDIP(142);
+  // Fixed tile widths are intentional. Values never stretch individually;
+  // this keeps columns stable and left-aligned across all categories.
+  if (mode == MODE_FULL) return FromDIP(160);
+  if (mode == MODE_COMPACT) return FromDIP(132);
+  return FromDIP(108);
 }
 
 std::vector<BoatInfoDashboardPanel::Group>
@@ -123,34 +113,21 @@ int BoatInfoDashboardPanel::GroupPreferredWidth(const Group& group,
                                                 ResponsiveMode mode,
                                                 int availableWidth) const {
   if (group.vessel) return std::min(availableWidth, VesselWidth(mode));
+  const int tile = ValueWidth(BoatInfoValue(), mode);
   const int gap = FromDIP(3);
-  int sum = 0;
-  int widest = FromDIP(105);
-  for (size_t i = 0; i < group.values.size(); ++i) {
-    const int width = ValueWidth(*group.values[i], mode);
-    sum += width + (i ? gap : 0);
-    widest = std::max(widest, width);
-  }
-  const int cap =
-      FromDIP(mode == MODE_FULL ? 560 : mode == MODE_COMPACT ? 430 : 325);
-  return std::min(availableWidth, std::max(widest, std::min(sum, cap)));
+  const int count = std::max(1, static_cast<int>(group.values.size()));
+  const int desired = count * tile + (count - 1) * gap;
+  return std::min(availableWidth, desired);
 }
 
 int BoatInfoDashboardPanel::GroupHeight(const Group& group,
                                         ResponsiveMode mode, int width) const {
   if (group.vessel) return HeaderHeight(mode) + ContentRowHeight(mode);
   const int gap = FromDIP(3);
-  int rows = 1;
-  int used = 0;
-  for (size_t i = 0; i < group.values.size(); ++i) {
-    const int itemWidth = std::min(width, ValueWidth(*group.values[i], mode));
-    if (used > 0 && used + gap + itemWidth > width) {
-      ++rows;
-      used = 0;
-    }
-    if (used > 0) used += gap;
-    used += itemWidth;
-  }
+  const int tile = ValueWidth(BoatInfoValue(), mode);
+  const int columns = std::max(1, (width + gap) / (tile + gap));
+  const int rows = std::max(
+      1, (static_cast<int>(group.values.size()) + columns - 1) / columns);
   return HeaderHeight(mode) + rows * ContentRowHeight(mode);
 }
 
@@ -235,22 +212,22 @@ void BoatInfoDashboardPanel::DrawVessel(wxDC& dc, const wxRect& rect,
   header.SetWeight(wxFONTWEIGHT_BOLD);
   dc.SetFont(header);
   dc.SetTextForeground(secondary);
-  dc.DrawText(wxT("VESSEL"), rect.x + pad, rect.y + FromDIP(2));
+  dc.DrawText(wxT("VESSEL"), rect.x + pad, rect.y + FromDIP(1));
   dc.SetPen(wxPen(secondary));
-  dc.DrawLine(rect.x, rect.y + HeaderHeight(mode) - FromDIP(4),
-              rect.GetRight(), rect.y + HeaderHeight(mode) - FromDIP(4));
+  dc.DrawLine(rect.x, rect.y + HeaderHeight(mode) - FromDIP(3),
+              rect.GetRight(), rect.y + HeaderHeight(mode) - FromDIP(3));
 
   wxFont nameFont = GetFont();
   nameFont.SetWeight(wxFONTWEIGHT_BOLD);
   nameFont.SetPointSize(mode == MODE_FULL
-                            ? std::max(12, nameFont.GetPointSize() + 3)
+                            ? std::max(11, nameFont.GetPointSize() + 2)
                             : mode == MODE_COMPACT
                                   ? std::max(10, nameFont.GetPointSize() + 1)
                                   : std::max(9, nameFont.GetPointSize()));
   dc.SetFont(nameFont);
   dc.SetTextForeground(text);
   dc.DrawText(m_vesselName, rect.x + pad,
-              rect.y + HeaderHeight(mode) + FromDIP(2));
+              rect.y + HeaderHeight(mode) + FromDIP(1));
 
   if (mode != MODE_MINIMAL) {
     wxString meta;
@@ -259,21 +236,21 @@ void BoatInfoDashboardPanel::DrawVessel(wxDC& dc, const wxRect& rect,
       if (!meta.IsEmpty()) meta += wxT(" · ");
       meta += m_callSign;
     }
-    wxFont metaFont = GetFont();
-    metaFont.SetPointSize(std::max(7, metaFont.GetPointSize() - 2));
-    dc.SetFont(metaFont);
-    dc.SetTextForeground(text);
-    if (!meta.IsEmpty())
+    if (!meta.IsEmpty()) {
+      wxFont metaFont = GetFont();
+      metaFont.SetPointSize(std::max(7, metaFont.GetPointSize() - 2));
+      dc.SetFont(metaFont);
+      dc.SetTextForeground(text);
       dc.DrawText(meta, rect.x + pad,
-                  rect.y + HeaderHeight(mode) +
-                      (mode == MODE_FULL ? FromDIP(29) : FromDIP(23)));
+                  rect.y + HeaderHeight(mode) + FromDIP(20));
+    }
   }
 }
 
 void BoatInfoDashboardPanel::DrawValue(
     wxDC& dc, const wxRect& rect, const BoatInfoValue& value,
     ResponsiveMode mode, const wxColour& text, const wxColour& secondary,
-    const wxColour& accent) {
+    const wxColour&) {
   dc.SetClippingRegion(rect);
   const int pad = FromDIP(4);
   const wxString label = DisplayLabel(value, mode);
@@ -285,20 +262,17 @@ void BoatInfoDashboardPanel::DrawValue(
   labelFont.SetWeight(wxFONTWEIGHT_BOLD);
   dc.SetFont(labelFont);
   dc.SetTextForeground(text);
-  dc.DrawText(label, rect.x + pad, rect.y + FromDIP(2));
+  dc.DrawText(label, rect.x + pad, rect.y + FromDIP(1));
 
   wxFont valueFont = GetFont();
   valueFont.SetWeight(wxFONTWEIGHT_BOLD);
   if (mode == MODE_FULL)
-    valueFont.SetPointSize(std::max(12, valueFont.GetPointSize() + 3));
-  else if (mode == MODE_COMPACT)
     valueFont.SetPointSize(std::max(10, valueFont.GetPointSize() + 1));
   else
     valueFont.SetPointSize(std::max(9, valueFont.GetPointSize()));
   dc.SetFont(valueFont);
   dc.SetTextForeground(value.stale ? secondary : text);
-  const int valueY = rect.y +
-                     (mode == MODE_MINIMAL ? FromDIP(14) : FromDIP(17));
+  const int valueY = rect.y + FromDIP(15);
   dc.DrawText(rendered, rect.x + pad, valueY);
 
   wxCoord valueWidth = 0, valueHeight = 0;
@@ -311,7 +285,7 @@ void BoatInfoDashboardPanel::DrawValue(
     dc.SetFont(unitFont);
     dc.SetTextForeground(text);
     dc.DrawText(unit, rect.x + pad + valueWidth + FromDIP(3),
-                valueY + (mode == MODE_FULL ? FromDIP(7) : FromDIP(4)));
+                valueY + FromDIP(2));
   }
 
   if (!value.valid || value.stale) {
@@ -323,72 +297,10 @@ void BoatInfoDashboardPanel::DrawValue(
     wxCoord stateWidth = 0, stateHeight = 0;
     dc.GetTextExtent(state, &stateWidth, &stateHeight);
     dc.DrawText(state, rect.GetRight() - pad - static_cast<int>(stateWidth),
-                rect.y + FromDIP(2));
+                rect.y + FromDIP(1));
   }
 
-  if (value.valid && mode != MODE_MINIMAL) {
-    const int graphY = rect.GetBottom() - FromDIP(9);
-    const int graphWidth = std::max(1, rect.width - 2 * pad);
-    if (value.primitive == BoatInfoValue::PRIMITIVE_LEVEL &&
-        value.hasNumericValue && value.maximum > value.minimum) {
-      dc.SetPen(wxPen(secondary));
-      dc.SetBrush(*wxTRANSPARENT_BRUSH);
-      dc.DrawRectangle(rect.x + pad, graphY, graphWidth, FromDIP(4));
-      double fraction =
-          (value.displayValue - value.minimum) / (value.maximum - value.minimum);
-      fraction = std::max(0.0, std::min(1.0, fraction));
-      dc.SetPen(*wxTRANSPARENT_PEN);
-      dc.SetBrush(wxBrush(value.stale ? secondary : accent));
-      dc.DrawRectangle(rect.x + pad, graphY,
-                       static_cast<int>(graphWidth * fraction), FromDIP(4));
-    } else if (value.primitive == BoatInfoValue::PRIMITIVE_TAPE &&
-               value.hasNumericValue) {
-      const int center = rect.x + rect.width / 2;
-      dc.SetPen(wxPen(secondary));
-      dc.DrawLine(rect.x + pad, graphY + FromDIP(1), rect.GetRight() - pad,
-                  graphY + FromDIP(1));
-      dc.SetPen(wxPen(value.stale ? secondary : text,
-                      std::max(1, FromDIP(2))));
-      dc.DrawLine(center, graphY - FromDIP(4), center, graphY + FromDIP(5));
-      if (mode == MODE_FULL) {
-        wxFont tapeFont = GetFont();
-        tapeFont.SetPointSize(std::max(7, tapeFont.GetPointSize() - 2));
-        dc.SetFont(tapeFont);
-        dc.SetTextForeground(text);
-        for (int offset = -2; offset <= 2; ++offset) {
-          double tick = value.displayValue + offset * 10.0;
-          while (tick < 0.0) tick += 360.0;
-          while (tick >= 360.0) tick -= 360.0;
-          const int x = center + offset * FromDIP(36);
-          if (x < rect.x + pad || x > rect.GetRight() - pad) continue;
-          dc.DrawLine(x, graphY - FromDIP(1), x, graphY + FromDIP(4));
-          dc.DrawText(wxString::Format(wxT("%.0f"), tick), x - FromDIP(7),
-                      graphY + FromDIP(4));
-        }
-      }
-    } else if (value.primitive == BoatInfoValue::PRIMITIVE_TREND &&
-               value.trend.size() > 1) {
-      double minValue =
-          *std::min_element(value.trend.begin(), value.trend.end());
-      double maxValue =
-          *std::max_element(value.trend.begin(), value.trend.end());
-      if (maxValue <= minValue) maxValue = minValue + 1.0;
-      const int top = graphY - FromDIP(7);
-      const int bottom = rect.GetBottom() - FromDIP(2);
-      dc.SetPen(wxPen(value.stale ? secondary : accent));
-      wxPoint previous;
-      for (size_t i = 0; i < value.trend.size(); ++i) {
-        const double fx = static_cast<double>(i) /
-                          static_cast<double>(value.trend.size() - 1);
-        const double fy =
-            (value.trend[i] - minValue) / (maxValue - minValue);
-        const wxPoint point(rect.x + pad + static_cast<int>(graphWidth * fx),
-                            bottom - static_cast<int>((bottom - top) * fy));
-        if (i > 0) dc.DrawLine(previous.x, previous.y, point.x, point.y);
-        previous = point;
-      }
-    }
-  }
+  // Text-only baseline: no Level, Tape, Trend or analog geometry is rendered.
   dc.DestroyClippingRegion();
 }
 
@@ -398,6 +310,7 @@ void BoatInfoDashboardPanel::DrawGroup(
   const int pad = FromDIP(4);
   const int gap = FromDIP(3);
   const int headerHeight = HeaderHeight(mode);
+  const int tile = ValueWidth(BoatInfoValue(), mode);
 
   wxFont headerFont = GetFont();
   headerFont.SetPointSize(std::max(7, headerFont.GetPointSize() - 2));
@@ -405,61 +318,23 @@ void BoatInfoDashboardPanel::DrawGroup(
   dc.SetFont(headerFont);
   dc.SetTextForeground(text);
   dc.DrawText(CategoryTitle(group.category, mode), rect.x + pad,
-              rect.y + FromDIP(2));
+              rect.y + FromDIP(1));
   dc.SetPen(wxPen(secondary));
-  dc.DrawLine(rect.x, rect.y + headerHeight - FromDIP(4), rect.GetRight(),
-              rect.y + headerHeight - FromDIP(4));
+  dc.DrawLine(rect.x, rect.y + headerHeight - FromDIP(3), rect.GetRight(),
+              rect.y + headerHeight - FromDIP(3));
 
-  struct Cell {
-    const BoatInfoValue* value;
-    int width;
-  };
-  std::vector<std::vector<Cell> > rows;
-  std::vector<Cell> current;
-  int used = 0;
-  for (size_t i = 0; i < group.values.size(); ++i) {
-    const int width = std::min(rect.width, ValueWidth(*group.values[i], mode));
-    if (!current.empty() && used + gap + width > rect.width) {
-      rows.push_back(current);
-      current.clear();
-      used = 0;
-    }
-    if (!current.empty()) used += gap;
-    Cell cell;
-    cell.value = group.values[i];
-    cell.width = width;
-    current.push_back(cell);
-    used += width;
-  }
-  if (!current.empty()) rows.push_back(current);
-
+  int x = rect.x;
   int y = rect.y + headerHeight;
-  for (size_t rowIndex = 0; rowIndex < rows.size(); ++rowIndex) {
-    std::vector<Cell>& row = rows[rowIndex];
-    int base = gap * static_cast<int>(row.size() > 0 ? row.size() - 1 : 0);
-    int weight = 0;
-    for (size_t i = 0; i < row.size(); ++i) {
-      base += row[i].width;
-      weight += row[i].width;
+  for (size_t i = 0; i < group.values.size(); ++i) {
+    if (x > rect.x && x - rect.x + gap + tile > rect.width) {
+      x = rect.x;
+      y += ContentRowHeight(mode);
     }
-    int extra = std::max(0, rect.width - base);
-    int distributed = 0;
-    int x = rect.x;
-    for (size_t i = 0; i < row.size(); ++i) {
-      int share = 0;
-      if (i + 1 == row.size()) {
-        share = extra - distributed;
-      } else if (weight > 0) {
-        share = static_cast<int>(
-            static_cast<long long>(extra) * row[i].width / weight);
-        distributed += share;
-      }
-      const int width = row[i].width + share;
-      wxRect valueRect(x, y, width, ContentRowHeight(mode));
-      DrawValue(dc, valueRect, *row[i].value, mode, text, secondary, accent);
-      x += width + gap;
-    }
-    y += ContentRowHeight(mode);
+    if (x > rect.x) x += gap;
+    const int width = std::min(tile, rect.GetRight() - x + 1);
+    wxRect valueRect(x, y, width, ContentRowHeight(mode));
+    DrawValue(dc, valueRect, *group.values[i], mode, text, secondary, accent);
+    x += tile;
   }
 
   dc.SetPen(wxPen(secondary));
@@ -502,9 +377,9 @@ void BoatInfoDashboardPanel::OnPaint(wxPaintEvent&) {
   Shelf current;
   int usedWidth = 0;
   for (size_t i = 0; i < groups.size(); ++i) {
-    const int width = GroupPreferredWidth(groups[i], mode, availableWidth);
-    const int height = GroupHeight(groups[i], mode, width);
-    if (!current.items.empty() && usedWidth + gap + width > availableWidth) {
+    const int preferred = GroupPreferredWidth(groups[i], mode, availableWidth);
+    const int height = GroupHeight(groups[i], mode, preferred);
+    if (!current.items.empty() && usedWidth + gap + preferred > availableWidth) {
       shelves.push_back(current);
       current = Shelf();
       usedWidth = 0;
@@ -512,40 +387,32 @@ void BoatInfoDashboardPanel::OnPaint(wxPaintEvent&) {
     if (!current.items.empty()) usedWidth += gap;
     ShelfItem item;
     item.groupIndex = i;
-    item.width = width;
+    item.width = preferred;
     item.height = height;
     current.items.push_back(item);
-    usedWidth += width;
+    usedWidth += preferred;
     current.height = std::max(current.height, height);
   }
   if (!current.items.empty()) shelves.push_back(current);
 
+  // Category blocks fill each complete shelf, but value tiles inside them keep
+  // fixed widths and remain left aligned. Only the block boundary stretches.
   for (size_t shelfIndex = 0; shelfIndex < shelves.size(); ++shelfIndex) {
     Shelf& shelf = shelves[shelfIndex];
     int base = gap * static_cast<int>(shelf.items.size() > 0
                                          ? shelf.items.size() - 1
                                          : 0);
-    int weight = 0;
-    for (size_t i = 0; i < shelf.items.size(); ++i) {
-      base += shelf.items[i].width;
-      weight += shelf.items[i].width;
-    }
-    const int extra = std::max(0, availableWidth - base);
-    int distributed = 0;
-    shelf.height = 0;
-    for (size_t i = 0; i < shelf.items.size(); ++i) {
-      int share = 0;
-      if (i + 1 == shelf.items.size()) {
-        share = extra - distributed;
-      } else if (weight > 0) {
-        share = static_cast<int>(static_cast<long long>(extra) *
-                                 shelf.items[i].width / weight);
-        distributed += share;
-      }
-      shelf.items[i].width += share;
-      shelf.items[i].height = GroupHeight(
-          groups[shelf.items[i].groupIndex], mode, shelf.items[i].width);
-      shelf.height = std::max(shelf.height, shelf.items[i].height);
+    for (size_t i = 0; i < shelf.items.size(); ++i) base += shelf.items[i].width;
+    int extra = std::max(0, availableWidth - base);
+    if (!shelf.items.empty()) {
+      // Stretch only the last category boundary to the right edge. This keeps
+      // all earlier category column starts stable and all value tiles fixed.
+      shelf.items.back().width += extra;
+      shelf.items.back().height = GroupHeight(
+          groups[shelf.items.back().groupIndex], mode, shelf.items.back().width);
+      shelf.height = 0;
+      for (size_t i = 0; i < shelf.items.size(); ++i)
+        shelf.height = std::max(shelf.height, shelf.items[i].height);
     }
   }
 
