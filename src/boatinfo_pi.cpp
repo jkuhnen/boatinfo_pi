@@ -12,6 +12,7 @@
 #include <wx/fileconf.h>
 #include <wx/jsonreader.h>
 #include <wx/jsonval.h>
+#include <wx/panel.h>
 #include <wx/scrolwin.h>
 #include <wx/settings.h>
 #include <wx/sizer.h>
@@ -191,6 +192,28 @@ int SelectionFromPrimitive(BoatInfoValue::Primitive primitive) {
   }
 }
 
+BoatInfoValue::Priority PriorityFromSelection(int selection) {
+  switch (selection) {
+    case 0:
+      return BoatInfoValue::PRIORITY_PRIMARY;
+    case 2:
+      return BoatInfoValue::PRIORITY_DETAIL;
+    default:
+      return BoatInfoValue::PRIORITY_SECONDARY;
+  }
+}
+
+int SelectionFromPriority(BoatInfoValue::Priority priority) {
+  switch (priority) {
+    case BoatInfoValue::PRIORITY_PRIMARY:
+      return 0;
+    case BoatInfoValue::PRIORITY_DETAIL:
+      return 2;
+    default:
+      return 1;
+  }
+}
+
 int CategoryRank(const wxString& category) {
   if (category == wxT("Navigation")) return 0;
   if (category == wxT("Electrical")) return 1;
@@ -200,10 +223,41 @@ int CategoryRank(const wxString& category) {
   return 5;
 }
 
+int SemanticRank(const BoatInfoValue& value) {
+  const wxString path = value.path.Lower();
+  if (value.category == wxT("Navigation")) {
+    if (path.Find(wxT("courseoverground")) != wxNOT_FOUND) return 0;
+    if (path.Find(wxT("speedoverground")) != wxNOT_FOUND) return 1;
+    if (path.Find(wxT("heading")) != wxNOT_FOUND) return 2;
+    if (path.Find(wxT("latitude")) != wxNOT_FOUND) return 8;
+    if (path.Find(wxT("longitude")) != wxNOT_FOUND) return 9;
+  } else if (value.category == wxT("Electrical")) {
+    if (path.Find(wxT("stateofcharge")) != wxNOT_FOUND) return 0;
+    if (path.Find(wxT("service.voltage")) != wxNOT_FOUND ||
+        path.Find(wxT("house.voltage")) != wxNOT_FOUND)
+      return 1;
+    if (path.Find(wxT("current")) != wxNOT_FOUND) return 2;
+    if (path.Find(wxT("starter.voltage")) != wxNOT_FOUND) return 3;
+    if (path.Find(wxT("power")) != wxNOT_FOUND) return 4;
+  } else if (value.category == wxT("Tanks")) {
+    if (path.Find(wxT("currentlevel")) != wxNOT_FOUND) return 0;
+  } else if (value.category == wxT("Propulsion")) {
+    if (path.Find(wxT("revolutions")) != wxNOT_FOUND) return 0;
+    if (path.Find(wxT("temperature")) != wxNOT_FOUND) return 1;
+  } else if (value.category == wxT("Environment")) {
+    if (path.Find(wxT("depth")) != wxNOT_FOUND) return 0;
+  }
+  return 10;
+}
+
 bool ValueOrder(const BoatInfoValue* a, const BoatInfoValue* b) {
-  const int aRank = CategoryRank(a->category);
-  const int bRank = CategoryRank(b->category);
-  if (aRank != bRank) return aRank < bRank;
+  const int aCategory = CategoryRank(a->category);
+  const int bCategory = CategoryRank(b->category);
+  if (aCategory != bCategory) return aCategory < bCategory;
+  if (a->priority != b->priority) return a->priority < b->priority;
+  const int aSemantic = SemanticRank(*a);
+  const int bSemantic = SemanticRank(*b);
+  if (aSemantic != bSemantic) return aSemantic < bSemantic;
   const wxString aLabel = a->label.IsEmpty() ? a->suggestedLabel : a->label;
   const wxString bLabel = b->label.IsEmpty() ? b->suggestedLabel : b->label;
   if (aLabel.CmpNoCase(bLabel) != 0) return aLabel.CmpNoCase(bLabel) < 0;
@@ -224,6 +278,21 @@ wxString FormatNumber(const BoatInfoValue& value) {
   if (value.unit == wxT("Ah"))
     return wxString::Format(wxT("%.1f"), value.displayValue);
   return wxString::Format(wxT("%.1f"), value.displayValue);
+}
+
+wxString UnitWithQualifier(const BoatInfoValue& value) {
+  if (value.qualifier.IsEmpty()) return value.unit;
+  if (value.unit.IsEmpty()) return value.qualifier;
+  return value.unit + wxT(" ") + value.qualifier;
+}
+
+wxString EffectiveText(const std::map<wxString, BoatInfoValue>& values,
+                       const wxString& key) {
+  std::map<wxString, BoatInfoValue>::const_iterator found = values.find(key);
+  if (found == values.end() || !found->second.valid ||
+      found->second.textValue.IsEmpty())
+    return wxT("—");
+  return found->second.textValue;
 }
 
 void ResolveHostColours(wxColour& background, wxColour& text,
@@ -248,112 +317,405 @@ void ApplyColoursRecursive(wxWindow* window, const wxColour& background,
     ApplyColoursRecursive(node->GetData(), background, text);
   window->Refresh(false);
 }
-
-wxString UnitWithQualifier(const BoatInfoValue& value) {
-  if (value.qualifier.IsEmpty()) return value.unit;
-  if (value.unit.IsEmpty()) return value.qualifier;
-  return value.unit + wxT(" ") + value.qualifier;
-}
-
-wxString EffectiveText(const std::map<wxString, BoatInfoValue>& values,
-                       const wxString& key) {
-  std::map<wxString, BoatInfoValue>::const_iterator found = values.find(key);
-  if (found == values.end() || !found->second.valid ||
-      found->second.textValue.IsEmpty())
-    return wxT("—");
-  return found->second.textValue;
-}
 }  // namespace
 
-class BoatInfoVesselPanel : public wxPanel {
+class BoatInfoDashboardPanel : public wxPanel {
 public:
-  explicit BoatInfoVesselPanel(wxWindow* parent)
+  enum ResponsiveMode { MODE_FULL = 0, MODE_COMPACT, MODE_MINIMAL };
+
+  explicit BoatInfoDashboardPanel(wxWindow* parent)
       : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
                 wxBORDER_NONE) {
     SetBackgroundStyle(wxBG_STYLE_PAINT);
-    SetMinSize(wxSize(-1, FromDIP(54)));
-    Bind(wxEVT_PAINT, &BoatInfoVesselPanel::OnPaint, this);
+    Bind(wxEVT_PAINT, &BoatInfoDashboardPanel::OnPaint, this);
+    Bind(wxEVT_SIZE, &BoatInfoDashboardPanel::OnSize, this);
   }
 
-  void SetIdentity(const wxString& name, const wxString& mmsi,
-                   const wxString& callSign, const wxString& source) {
-    m_name = name.IsEmpty() ? wxT("—") : name;
+  void SetState(const std::vector<BoatInfoValue>& values,
+                const wxString& vesselName, const wxString& mmsi,
+                const wxString& callSign, const wxString& sourceSummary) {
+    m_values = values;
+    m_vesselName = vesselName.IsEmpty() ? wxT("—") : vesselName;
     m_mmsi = mmsi.IsEmpty() ? wxT("—") : mmsi;
     m_callSign = callSign.IsEmpty() ? wxT("—") : callSign;
-    m_source = source;
+    m_sourceSummary = sourceSummary;
     Refresh(false);
   }
 
 private:
-  void OnPaint(wxPaintEvent&) {
-    wxAutoBufferedPaintDC dc(this);
-    wxColour background, text, secondary, accent;
-    ResolveHostColours(background, text, secondary, accent);
-    dc.SetBackground(wxBrush(background));
-    dc.Clear();
-    const int pad = FromDIP(4);
+  struct Token {
+    enum Kind { VESSEL, CATEGORY, VALUE } kind = VALUE;
+    wxString category;
+    const BoatInfoValue* value = nullptr;
+  };
+
+  int RowHeight(ResponsiveMode mode) const {
+    if (mode == MODE_FULL) return FromDIP(72);
+    if (mode == MODE_COMPACT) return FromDIP(54);
+    return FromDIP(38);
+  }
+
+  int VesselWidth(ResponsiveMode mode) const {
+    if (mode == MODE_FULL) return FromDIP(205);
+    if (mode == MODE_COMPACT) return FromDIP(165);
+    return FromDIP(115);
+  }
+
+  int CategoryWidth(ResponsiveMode mode) const {
+    if (mode == MODE_FULL) return FromDIP(88);
+    if (mode == MODE_COMPACT) return FromDIP(76);
+    return FromDIP(62);
+  }
+
+  int ValueWidth(const BoatInfoValue& value, ResponsiveMode mode) const {
+    if (mode == MODE_MINIMAL) return FromDIP(108);
+    if (mode == MODE_COMPACT) {
+      if (value.primitive == BoatInfoValue::PRIMITIVE_LEVEL ||
+          value.primitive == BoatInfoValue::PRIMITIVE_TAPE ||
+          value.primitive == BoatInfoValue::PRIMITIVE_TREND)
+        return FromDIP(148);
+      return FromDIP(126);
+    }
+    if (value.primitive == BoatInfoValue::PRIMITIVE_TAPE) return FromDIP(220);
+    if (value.primitive == BoatInfoValue::PRIMITIVE_LEVEL ||
+        value.primitive == BoatInfoValue::PRIMITIVE_TREND)
+      return FromDIP(185);
+    if (value.path.Lower().Find(wxT("latitude")) != wxNOT_FOUND ||
+        value.path.Lower().Find(wxT("longitude")) != wxNOT_FOUND)
+      return FromDIP(185);
+    return FromDIP(145);
+  }
+
+  int TokenWidth(const Token& token, ResponsiveMode mode) const {
+    if (token.kind == Token::VESSEL) return VesselWidth(mode);
+    if (token.kind == Token::CATEGORY) return CategoryWidth(mode);
+    return token.value ? ValueWidth(*token.value, mode) : FromDIP(100);
+  }
+
+  std::vector<Token> BuildTokens(BoatInfoValue::Priority cutoff) const {
+    std::vector<Token> tokens;
+    Token vessel;
+    vessel.kind = Token::VESSEL;
+    tokens.push_back(vessel);
+
+    wxString currentCategory;
+    for (size_t i = 0; i < m_values.size(); ++i) {
+      const BoatInfoValue& value = m_values[i];
+      if (!value.visible || value.priority > cutoff) continue;
+      if (value.category != currentCategory) {
+        currentCategory = value.category;
+        Token category;
+        category.kind = Token::CATEGORY;
+        category.category = currentCategory;
+        tokens.push_back(category);
+      }
+      Token item;
+      item.kind = Token::VALUE;
+      item.category = currentCategory;
+      item.value = &value;
+      tokens.push_back(item);
+    }
+    return tokens;
+  }
+
+  int CountRows(const std::vector<Token>& tokens, ResponsiveMode mode,
+                int availableWidth) const {
+    if (tokens.empty()) return 0;
+    const int gap = FromDIP(4);
+    int rows = 1;
+    int used = 0;
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      int width = std::min(availableWidth, TokenWidth(tokens[i], mode));
+      if (tokens[i].kind == Token::CATEGORY && i + 1 < tokens.size() &&
+          tokens[i + 1].kind == Token::VALUE) {
+        const int pair = width + gap +
+                         std::min(availableWidth,
+                                  TokenWidth(tokens[i + 1], mode));
+        if (used > 0 && used + gap + pair > availableWidth) {
+          ++rows;
+          used = 0;
+        }
+      }
+      if (used > 0 && used + gap + width > availableWidth) {
+        ++rows;
+        used = 0;
+      }
+      if (used > 0) used += gap;
+      used += width;
+    }
+    return rows;
+  }
+
+  void ChooseLayout(ResponsiveMode& mode, BoatInfoValue::Priority& cutoff,
+                    int& maxRows) const {
+    const wxSize size = GetClientSize();
+    const int pad = FromDIP(5);
+    const int availableWidth = std::max(FromDIP(120), size.x - 2 * pad);
+
+    struct Candidate {
+      ResponsiveMode mode;
+      BoatInfoValue::Priority cutoff;
+    } candidates[] = {
+        {MODE_FULL, BoatInfoValue::PRIORITY_DETAIL},
+        {MODE_COMPACT, BoatInfoValue::PRIORITY_DETAIL},
+        {MODE_MINIMAL, BoatInfoValue::PRIORITY_DETAIL},
+        {MODE_MINIMAL, BoatInfoValue::PRIORITY_SECONDARY},
+        {MODE_MINIMAL, BoatInfoValue::PRIORITY_PRIMARY}};
+
+    for (size_t i = 0; i < sizeof(candidates) / sizeof(candidates[0]); ++i) {
+      const int rowHeight = RowHeight(candidates[i].mode);
+      const int candidateRows = std::max(1, (size.y - 2 * pad) / rowHeight);
+      const std::vector<Token> tokens = BuildTokens(candidates[i].cutoff);
+      if (CountRows(tokens, candidates[i].mode, availableWidth) <=
+          candidateRows) {
+        mode = candidates[i].mode;
+        cutoff = candidates[i].cutoff;
+        maxRows = candidateRows;
+        return;
+      }
+    }
+
+    mode = MODE_MINIMAL;
+    cutoff = BoatInfoValue::PRIORITY_PRIMARY;
+    maxRows = std::max(1, (size.y - 2 * pad) / RowHeight(mode));
+  }
+
+  wxString RenderedValue(const BoatInfoValue& value) const {
+    wxString rendered = value.hasNumericValue ? FormatNumber(value)
+                                               : value.textValue;
+    if (!value.valid || rendered.IsEmpty()) rendered = wxT("—");
+    return rendered;
+  }
+
+  void DrawVessel(wxDC& dc, const wxRect& rect, ResponsiveMode mode,
+                  const wxColour& text, const wxColour& secondary) {
+    const int pad = FromDIP(5);
+    wxFont sectionFont = GetFont();
+    sectionFont.SetPointSize(std::max(7, sectionFont.GetPointSize() - 2));
+    sectionFont.SetWeight(wxFONTWEIGHT_BOLD);
+    dc.SetFont(sectionFont);
+    dc.SetTextForeground(secondary);
+    dc.DrawText(wxT("VESSEL"), rect.x + pad, rect.y + FromDIP(2));
+    dc.SetPen(wxPen(secondary));
+    dc.DrawLine(rect.x + pad, rect.y + FromDIP(15), rect.GetRight() - pad,
+                rect.y + FromDIP(15));
 
     wxFont nameFont = GetFont();
     nameFont.SetWeight(wxFONTWEIGHT_BOLD);
-    nameFont.SetPointSize(std::max(11, nameFont.GetPointSize() + 2));
+    nameFont.SetPointSize(mode == MODE_FULL
+                              ? std::max(12, nameFont.GetPointSize() + 3)
+                              : mode == MODE_COMPACT
+                                    ? std::max(10, nameFont.GetPointSize() + 1)
+                                    : std::max(9, nameFont.GetPointSize()));
     dc.SetFont(nameFont);
     dc.SetTextForeground(text);
-    dc.DrawText(m_name, pad, FromDIP(1));
+    dc.DrawText(m_vesselName, rect.x + pad,
+                rect.y + (mode == MODE_MINIMAL ? FromDIP(18) : FromDIP(20)));
 
-    wxFont metaFont = GetFont();
-    metaFont.SetPointSize(std::max(8, metaFont.GetPointSize() - 1));
-    dc.SetFont(metaFont);
+    if (mode != MODE_MINIMAL) {
+      wxString meta;
+      if (m_mmsi != wxT("—")) meta += wxT("MMSI ") + m_mmsi;
+      if (m_callSign != wxT("—")) {
+        if (!meta.IsEmpty()) meta += wxT(" · ");
+        meta += m_callSign;
+      }
+      wxFont metaFont = GetFont();
+      metaFont.SetPointSize(std::max(7, metaFont.GetPointSize() - 2));
+      dc.SetFont(metaFont);
+      dc.SetTextForeground(text);
+      if (!meta.IsEmpty())
+        dc.DrawText(meta, rect.x + pad,
+                    rect.y + (mode == MODE_FULL ? FromDIP(47) : FromDIP(39)));
+
+      if (mode == MODE_FULL && !m_sourceSummary.IsEmpty()) {
+        dc.SetTextForeground(secondary);
+        wxCoord width = 0, height = 0;
+        dc.GetTextExtent(m_sourceSummary, &width, &height);
+        if (width < rect.width / 2)
+          dc.DrawText(m_sourceSummary,
+                      rect.GetRight() - pad - static_cast<int>(width),
+                      rect.y + FromDIP(2));
+      }
+    }
+  }
+
+  void DrawCategory(wxDC& dc, const wxRect& rect, ResponsiveMode mode,
+                    const wxColour& secondary) {
+    const int pad = FromDIP(5);
+    wxFont font = GetFont();
+    font.SetPointSize(std::max(7, font.GetPointSize() - 2));
+    font.SetWeight(wxFONTWEIGHT_BOLD);
+    dc.SetFont(font);
+    dc.SetTextForeground(secondary);
+    dc.DrawText(rect.width < FromDIP(68) ? rect.height > FromDIP(35)
+                                               ? rect.width > FromDIP(50)
+                                                     ? wxString(rect.GetWidth() > 0
+                                                                    ? wxT("")
+                                                                    : wxT(""))
+                                                     : wxT("")
+                                               : wxT("")
+                                         : wxT(""),
+                rect.x, rect.y);
+    wxString title;
+    // Category titles are deliberately short in minimal mode.
+    if (mode == MODE_MINIMAL) {
+      if (rect.width <= FromDIP(65)) {
+        title = wxT("");
+      }
+    }
+    dc.DrawText(title.IsEmpty() ? wxT("") : title, rect.x + pad,
+                rect.y + FromDIP(2));
+  }
+
+  void DrawCategoryNamed(wxDC& dc, const wxRect& rect,
+                         const wxString& category, ResponsiveMode mode,
+                         const wxColour& text,
+                         const wxColour& secondary) {
+    const int pad = FromDIP(5);
+    wxString title = category.Upper();
+    if (mode == MODE_MINIMAL) {
+      if (category == wxT("Navigation")) title = wxT("NAV");
+      if (category == wxT("Electrical")) title = wxT("ELEC");
+      if (category == wxT("Propulsion")) title = wxT("PROP");
+      if (category == wxT("Environment")) title = wxT("ENV");
+      if (category == wxT("Technical")) title = wxT("TECH");
+    }
+    wxFont font = GetFont();
+    font.SetPointSize(std::max(7, font.GetPointSize() - 2));
+    font.SetWeight(wxFONTWEIGHT_BOLD);
+    dc.SetFont(font);
     dc.SetTextForeground(text);
-    wxString meta;
-    if (m_mmsi != wxT("—")) meta += wxT("MMSI ") + m_mmsi;
-    if (m_callSign != wxT("—")) {
-      if (!meta.IsEmpty()) meta += wxT("  ·  ");
-      meta += m_callSign;
-    }
-    if (meta.IsEmpty()) meta = wxT("No vessel identity data");
-    dc.DrawText(meta, pad, FromDIP(27));
+    dc.DrawText(title, rect.x + pad, rect.y + FromDIP(4));
+    dc.SetPen(wxPen(secondary));
+    const int lineY = rect.y + (mode == MODE_MINIMAL ? FromDIP(20)
+                                                   : FromDIP(22));
+    dc.DrawLine(rect.x + pad, lineY, rect.GetRight() - FromDIP(4), lineY);
+    dc.DrawLine(rect.GetRight() - 1, rect.y + FromDIP(4), rect.GetRight() - 1,
+                rect.GetBottom() - FromDIP(4));
+  }
 
-    if (!m_source.IsEmpty()) {
+  void DrawValue(wxDC& dc, const wxRect& rect, const BoatInfoValue& value,
+                 ResponsiveMode mode, const wxColour& text,
+                 const wxColour& secondary, const wxColour& accent) {
+    dc.SetClippingRegion(rect);
+    const int pad = FromDIP(5);
+    const wxString label =
+        value.label.IsEmpty() ? value.suggestedLabel : value.label;
+    const wxString rendered = RenderedValue(value);
+    const wxString unit = UnitWithQualifier(value);
+
+    wxFont labelFont = GetFont();
+    labelFont.SetPointSize(std::max(7, labelFont.GetPointSize() - 2));
+    labelFont.SetWeight(wxFONTWEIGHT_BOLD);
+    dc.SetFont(labelFont);
+    dc.SetTextForeground(text);
+    dc.DrawText(label, rect.x + pad, rect.y + FromDIP(2));
+
+    wxFont valueFont = GetFont();
+    if (mode == MODE_FULL)
+      valueFont.SetPointSize(std::max(12, valueFont.GetPointSize() + 3));
+    else if (mode == MODE_COMPACT)
+      valueFont.SetPointSize(std::max(10, valueFont.GetPointSize() + 1));
+    else
+      valueFont.SetPointSize(std::max(9, valueFont.GetPointSize()));
+    valueFont.SetWeight(wxFONTWEIGHT_BOLD);
+    dc.SetFont(valueFont);
+    dc.SetTextForeground(value.stale ? secondary : text);
+    const int valueY = rect.y + (mode == MODE_MINIMAL ? FromDIP(16)
+                                                       : FromDIP(18));
+    dc.DrawText(rendered, rect.x + pad, valueY);
+
+    wxCoord valueWidth = 0, valueHeight = 0;
+    dc.GetTextExtent(rendered, &valueWidth, &valueHeight);
+    if (value.valid && !unit.IsEmpty() &&
+        value.path.Lower().Find(wxT("latitude")) == wxNOT_FOUND &&
+        value.path.Lower().Find(wxT("longitude")) == wxNOT_FOUND) {
+      wxFont unitFont = GetFont();
+      unitFont.SetPointSize(std::max(7, unitFont.GetPointSize() - 2));
+      dc.SetFont(unitFont);
+      dc.SetTextForeground(text);
+      dc.DrawText(unit, rect.x + pad + valueWidth + FromDIP(3),
+                  valueY + (mode == MODE_FULL ? FromDIP(7) : FromDIP(4)));
+    }
+
+    if (!value.valid || value.stale) {
+      wxFont stateFont = GetFont();
+      stateFont.SetPointSize(std::max(7, stateFont.GetPointSize() - 2));
+      dc.SetFont(stateFont);
       dc.SetTextForeground(secondary);
-      wxCoord width = 0, height = 0;
-      dc.GetTextExtent(m_source, &width, &height);
-      dc.DrawText(m_source,
-                  std::max(pad, GetClientSize().x - pad - static_cast<int>(width)),
-                  FromDIP(1));
+      const wxString state = value.stale ? wxT("STALE") : wxT("NO DATA");
+      wxCoord stateWidth = 0, stateHeight = 0;
+      dc.GetTextExtent(state, &stateWidth, &stateHeight);
+      dc.DrawText(state, rect.GetRight() - pad - static_cast<int>(stateWidth),
+                  rect.y + FromDIP(2));
     }
-  }
 
-  wxString m_name;
-  wxString m_mmsi;
-  wxString m_callSign;
-  wxString m_source;
-};
+    if (value.valid && mode != MODE_MINIMAL) {
+      const int graphY = rect.GetBottom() - FromDIP(12);
+      const int graphWidth = std::max(1, rect.width - 2 * pad);
+      if (value.primitive == BoatInfoValue::PRIMITIVE_LEVEL &&
+          value.hasNumericValue && value.maximum > value.minimum) {
+        dc.SetPen(wxPen(secondary));
+        dc.SetBrush(*wxTRANSPARENT_BRUSH);
+        dc.DrawRectangle(rect.x + pad, graphY, graphWidth, FromDIP(5));
+        double fraction =
+            (value.displayValue - value.minimum) / (value.maximum - value.minimum);
+        fraction = std::max(0.0, std::min(1.0, fraction));
+        dc.SetPen(*wxTRANSPARENT_PEN);
+        dc.SetBrush(wxBrush(value.stale ? secondary : accent));
+        dc.DrawRectangle(rect.x + pad, graphY,
+                         static_cast<int>(graphWidth * fraction), FromDIP(5));
+      } else if (value.primitive == BoatInfoValue::PRIMITIVE_TAPE &&
+                 value.hasNumericValue) {
+        const int center = rect.x + rect.width / 2;
+        dc.SetPen(wxPen(secondary));
+        dc.DrawLine(rect.x + pad, graphY + FromDIP(2), rect.GetRight() - pad,
+                    graphY + FromDIP(2));
+        dc.SetPen(wxPen(value.stale ? secondary : text,
+                        std::max(1, FromDIP(2))));
+        dc.DrawLine(center, graphY - FromDIP(3), center,
+                    graphY + FromDIP(7));
+        if (mode == MODE_FULL) {
+          wxFont tapeFont = GetFont();
+          tapeFont.SetPointSize(std::max(7, tapeFont.GetPointSize() - 2));
+          dc.SetFont(tapeFont);
+          dc.SetTextForeground(text);
+          for (int offset = -2; offset <= 2; ++offset) {
+            double tick = value.displayValue + offset * 10.0;
+            while (tick < 0.0) tick += 360.0;
+            while (tick >= 360.0) tick -= 360.0;
+            const int x = center + offset * FromDIP(38);
+            if (x < rect.x + pad || x > rect.GetRight() - pad) continue;
+            dc.DrawLine(x, graphY, x, graphY + FromDIP(5));
+            dc.DrawText(wxString::Format(wxT("%.0f"), tick), x - FromDIP(7),
+                        graphY + FromDIP(5));
+          }
+        }
+      } else if (value.primitive == BoatInfoValue::PRIMITIVE_TREND &&
+                 value.trend.size() > 1) {
+        double minValue = *std::min_element(value.trend.begin(), value.trend.end());
+        double maxValue = *std::max_element(value.trend.begin(), value.trend.end());
+        if (maxValue <= minValue) maxValue = minValue + 1.0;
+        const int top = graphY - FromDIP(8);
+        const int bottom = rect.GetBottom() - FromDIP(3);
+        dc.SetPen(wxPen(value.stale ? secondary : accent));
+        wxPoint previous;
+        for (size_t i = 0; i < value.trend.size(); ++i) {
+          const double fx = static_cast<double>(i) /
+                            static_cast<double>(value.trend.size() - 1);
+          const double fy = (value.trend[i] - minValue) / (maxValue - minValue);
+          const wxPoint point(rect.x + pad + static_cast<int>(graphWidth * fx),
+                              bottom - static_cast<int>((bottom - top) * fy));
+          if (i > 0) dc.DrawLine(previous.x, previous.y, point.x, point.y);
+          previous = point;
+        }
+      }
+    }
 
-class BoatInfoInstrumentPanel : public wxPanel {
-public:
-  BoatInfoInstrumentPanel(wxWindow* parent, const BoatInfoValue& model)
-      : wxPanel(parent, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-                wxBORDER_NONE),
-        m_model(model) {
-    SetBackgroundStyle(wxBG_STYLE_PAINT);
-    UpdateMinimumHeight();
-    Bind(wxEVT_PAINT, &BoatInfoInstrumentPanel::OnPaint, this);
-  }
-
-  void SetModel(const BoatInfoValue& model) {
-    m_model = model;
-    UpdateMinimumHeight();
-    Refresh(false);
-  }
-
-private:
-  void UpdateMinimumHeight() {
-    int height = 44;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_NONE) height = 28;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_LEVEL) height = 56;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_TAPE) height = 72;
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_TREND) height = 62;
-    SetMinSize(wxSize(-1, FromDIP(height)));
+    dc.SetPen(wxPen(secondary));
+    dc.DrawLine(rect.GetRight() - 1, rect.y + FromDIP(5), rect.GetRight() - 1,
+                rect.GetBottom() - FromDIP(5));
+    dc.DestroyClippingRegion();
   }
 
   void OnPaint(wxPaintEvent&) {
@@ -364,133 +726,82 @@ private:
     dc.Clear();
 
     const wxSize size = GetClientSize();
+    if (size.x <= 0 || size.y <= 0) return;
+
+    ResponsiveMode mode = MODE_FULL;
+    BoatInfoValue::Priority cutoff = BoatInfoValue::PRIORITY_DETAIL;
+    int maxRows = 1;
+    ChooseLayout(mode, cutoff, maxRows);
+
+    const std::vector<Token> tokens = BuildTokens(cutoff);
     const int pad = FromDIP(5);
-    const wxString label =
-        m_model.label.IsEmpty() ? m_model.suggestedLabel : m_model.label;
-    wxString rendered = m_model.hasNumericValue ? FormatNumber(m_model)
-                                                 : m_model.textValue;
-    if (!m_model.valid || rendered.IsEmpty()) rendered = wxT("—");
-    const wxString unit = UnitWithQualifier(m_model);
+    const int gap = FromDIP(4);
+    const int availableWidth = std::max(FromDIP(120), size.x - 2 * pad);
+    const int rowHeight = RowHeight(mode);
+    int x = pad;
+    int y = pad;
+    int row = 0;
+    int hidden = 0;
 
-    wxFont labelFont = GetFont();
-    labelFont.SetPointSize(std::max(8, labelFont.GetPointSize() - 1));
-    labelFont.SetWeight(wxFONTWEIGHT_BOLD);
-
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_NONE) {
-      dc.SetFont(labelFont);
-      dc.SetTextForeground(text);
-      dc.DrawText(label, pad, FromDIP(5));
-      wxString compact = rendered;
-      if (m_model.valid && !unit.IsEmpty()) compact += wxT(" ") + unit;
-      wxFont compactFont = GetFont();
-      compactFont.SetPointSize(std::max(8, compactFont.GetPointSize() - 1));
-      dc.SetFont(compactFont);
-      dc.SetTextForeground(m_model.stale ? secondary : text);
-      wxCoord width = 0, height = 0;
-      dc.GetTextExtent(compact, &width, &height);
-      dc.DrawText(compact, std::max(pad, size.x - pad - static_cast<int>(width)),
-                  FromDIP(5));
-      return;
+    for (size_t i = 0; i < tokens.size(); ++i) {
+      int width = std::min(availableWidth, TokenWidth(tokens[i], mode));
+      if (tokens[i].kind == Token::CATEGORY && i + 1 < tokens.size() &&
+          tokens[i + 1].kind == Token::VALUE) {
+        const int pair = width + gap +
+                         std::min(availableWidth,
+                                  TokenWidth(tokens[i + 1], mode));
+        if (x > pad && x - pad + gap + pair > availableWidth) {
+          ++row;
+          x = pad;
+          y += rowHeight;
+        }
+      }
+      if (x > pad && x - pad + gap + width > availableWidth) {
+        ++row;
+        x = pad;
+        y += rowHeight;
+      }
+      if (row >= maxRows) {
+        if (tokens[i].kind == Token::VALUE) ++hidden;
+        continue;
+      }
+      if (x > pad) x += gap;
+      const wxRect rect(x, y, width, rowHeight - FromDIP(2));
+      if (tokens[i].kind == Token::VESSEL)
+        DrawVessel(dc, rect, mode, text, secondary);
+      else if (tokens[i].kind == Token::CATEGORY)
+        DrawCategoryNamed(dc, rect, tokens[i].category, mode, text, secondary);
+      else if (tokens[i].value)
+        DrawValue(dc, rect, *tokens[i].value, mode, text, secondary, accent);
+      x += width;
     }
 
-    dc.SetFont(labelFont);
-    dc.SetTextForeground(text);
-    dc.DrawText(label, pad, 0);
-
-    wxFont valueFont = GetFont();
-    valueFont.SetPointSize(std::max(12, valueFont.GetPointSize() + 4));
-    valueFont.SetWeight(wxFONTWEIGHT_BOLD);
-    dc.SetFont(valueFont);
-    dc.SetTextForeground(m_model.stale ? secondary : text);
-    dc.DrawText(rendered, pad, FromDIP(14));
-
-    wxCoord valueWidth = 0, valueHeight = 0;
-    dc.GetTextExtent(rendered, &valueWidth, &valueHeight);
-    if (m_model.valid && !unit.IsEmpty() &&
-        !m_model.path.Lower().EndsWith(wxT("latitude")) &&
-        !m_model.path.Lower().EndsWith(wxT("longitude"))) {
-      wxFont unitFont = GetFont();
-      unitFont.SetPointSize(std::max(8, unitFont.GetPointSize() - 1));
-      dc.SetFont(unitFont);
-      dc.SetTextForeground(text);
-      dc.DrawText(unit, pad + valueWidth + FromDIP(4), FromDIP(22));
+    for (size_t i = 0; i < m_values.size(); ++i) {
+      if (m_values[i].visible && m_values[i].priority > cutoff) ++hidden;
     }
-
-    if (!m_model.valid || m_model.stale) {
-      wxFont stateFont = GetFont();
-      stateFont.SetPointSize(std::max(8, stateFont.GetPointSize() - 1));
-      dc.SetFont(stateFont);
+    if (hidden > 0) {
+      wxString note = wxString::Format(wxT("+%d hidden"), hidden);
+      wxFont font = GetFont();
+      font.SetPointSize(std::max(7, font.GetPointSize() - 2));
+      dc.SetFont(font);
       dc.SetTextForeground(secondary);
-      dc.DrawText(m_model.stale ? wxT("STALE") : wxT("NO DATA"),
-                  std::max(pad, size.x - FromDIP(48)), 0);
-    }
-    if (!m_model.valid) return;
-
-    const int graphTop = FromDIP(38);
-    if (m_model.primitive == BoatInfoValue::PRIMITIVE_LEVEL &&
-        m_model.hasNumericValue && m_model.maximum > m_model.minimum) {
-      const int y = graphTop + FromDIP(1);
-      const int width = std::max(1, size.x - 2 * pad);
-      const int height = FromDIP(5);
-      dc.SetPen(wxPen(secondary));
-      dc.SetBrush(*wxTRANSPARENT_BRUSH);
-      dc.DrawRectangle(pad, y, width, height);
-      double fraction = (m_model.displayValue - m_model.minimum) /
-                        (m_model.maximum - m_model.minimum);
-      fraction = std::max(0.0, std::min(1.0, fraction));
-      dc.SetPen(*wxTRANSPARENT_PEN);
-      dc.SetBrush(wxBrush(m_model.stale ? secondary : accent));
-      dc.DrawRectangle(pad, y, static_cast<int>(width * fraction), height);
-    } else if (m_model.primitive == BoatInfoValue::PRIMITIVE_TAPE &&
-               m_model.hasNumericValue) {
-      const int center = size.x / 2;
-      const int y = graphTop + FromDIP(4);
-      dc.SetPen(wxPen(secondary));
-      dc.DrawLine(pad, y, size.x - pad, y);
-      dc.SetPen(wxPen(m_model.stale ? secondary : text,
-                      std::max(1, FromDIP(2))));
-      dc.DrawLine(center, y - FromDIP(5), center, y + FromDIP(5));
-      wxFont tapeFont = GetFont();
-      tapeFont.SetPointSize(std::max(8, tapeFont.GetPointSize() - 1));
-      dc.SetFont(tapeFont);
-      dc.SetTextForeground(text);
-      for (int offset = -2; offset <= 2; ++offset) {
-        double tick = m_model.displayValue + offset * 10.0;
-        while (tick < 0.0) tick += 360.0;
-        while (tick >= 360.0) tick -= 360.0;
-        const int x = center + offset * FromDIP(42);
-        dc.DrawLine(x, y - FromDIP(3), x, y + FromDIP(3));
-        dc.DrawText(wxString::Format(wxT("%.0f"), tick), x - FromDIP(8),
-                    y + FromDIP(4));
-      }
-    } else if (m_model.primitive == BoatInfoValue::PRIMITIVE_TREND &&
-               m_model.trend.size() > 1) {
-      const int left = pad;
-      const int right = size.x - pad;
-      const int top = graphTop;
-      const int bottom = size.y - FromDIP(4);
-      double minValue = *std::min_element(m_model.trend.begin(),
-                                          m_model.trend.end());
-      double maxValue = *std::max_element(m_model.trend.begin(),
-                                          m_model.trend.end());
-      if (maxValue <= minValue) maxValue = minValue + 1.0;
-      dc.SetPen(wxPen(m_model.stale ? secondary : accent));
-      wxPoint previous;
-      for (size_t i = 0; i < m_model.trend.size(); ++i) {
-        const double fx = static_cast<double>(i) /
-                          static_cast<double>(m_model.trend.size() - 1);
-        const double fy = (m_model.trend[i] - minValue) /
-                          (maxValue - minValue);
-        const wxPoint point(
-            left + static_cast<int>((right - left) * fx),
-            bottom - static_cast<int>((bottom - top) * fy));
-        if (i > 0) dc.DrawLine(previous.x, previous.y, point.x, point.y);
-        previous = point;
-      }
+      wxCoord width = 0, height = 0;
+      dc.GetTextExtent(note, &width, &height);
+      dc.DrawText(note, size.x - pad - static_cast<int>(width),
+                  size.y - pad - static_cast<int>(height));
     }
   }
 
-  BoatInfoValue m_model;
+  void OnSize(wxSizeEvent& event) {
+    Refresh(false);
+    event.Skip();
+  }
+
+  std::vector<BoatInfoValue> m_values;
+  wxString m_vesselName;
+  wxString m_mmsi;
+  wxString m_callSign;
+  wxString m_sourceSummary;
 };
 
 extern "C" BOATINFO_EXPORT opencpn_plugin* create_pi(void* ppimgr) {
@@ -525,14 +836,17 @@ int boatinfo_pi::Init() {
   wxAuiPaneInfo pane;
   pane.Name(wxT("BoatInfoPanel"))
       .Caption(wxT("BoatInfo"))
-      .Right()
-      .BestSize(m_panel->FromDIP(340), -1)
-      .MinSize(m_panel->FromDIP(240), -1)
+      .CaptionVisible(false)
+      .Bottom()
+      .BestSize(-1, m_panel->FromDIP(165))
+      .MinSize(-1, m_panel->FromDIP(82))
+      .MaxSize(-1, m_panel->FromDIP(240))
       .Floatable(false)
-      .RightDockable(true)
-      .LeftDockable(true)
+      .Movable(false)
+      .LeftDockable(false)
+      .RightDockable(false)
       .TopDockable(false)
-      .BottomDockable(false)
+      .BottomDockable(true)
       .CloseButton(false)
       .Show(true);
 
@@ -554,104 +868,31 @@ int boatinfo_pi::Init() {
 
 void boatinfo_pi::BuildMainPanel() {
   if (!m_panel) return;
-  const int outer = m_panel->FromDIP(7);
   wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
-
-  wxStaticText* title = new wxStaticText(m_panel, wxID_ANY, wxT("BoatInfo"));
-  wxFont titleFont = title->GetFont();
-  titleFont.SetWeight(wxFONTWEIGHT_BOLD);
-  titleFont.SetPointSize(titleFont.GetPointSize() + 1);
-  title->SetFont(titleFont);
-  root->Add(title, 0, wxLEFT | wxRIGHT | wxTOP, outer);
-
-  m_vesselPanel = new BoatInfoVesselPanel(m_panel);
-  root->Add(m_vesselPanel, 0, wxEXPAND | wxLEFT | wxRIGHT | wxTOP | wxBOTTOM,
-            m_panel->FromDIP(4));
-
-  m_instrumentScroll = new wxScrolledWindow(
-      m_panel, wxID_ANY, wxDefaultPosition, wxDefaultSize,
-      wxVSCROLL | wxBORDER_NONE);
-  m_instrumentScroll->SetScrollRate(0, m_panel->FromDIP(16));
-  m_instrumentScroll->ShowScrollbars(wxSHOW_SB_NEVER, wxSHOW_SB_NEVER);
-  m_instrumentGrid = new wxFlexGridSizer(1, m_panel->FromDIP(1), 0);
-  m_instrumentGrid->AddGrowableCol(0, 1);
-  m_instrumentScroll->SetSizer(m_instrumentGrid);
-  root->Add(m_instrumentScroll, 1, wxEXPAND | wxLEFT | wxRIGHT,
-            m_panel->FromDIP(3));
-
-  wxBoxSizer* footer = new wxBoxSizer(wxHORIZONTAL);
-  footer->Add(new wxStaticText(m_panel, wxID_ANY, wxT("Data:")), 0,
-              wxALIGN_CENTER_VERTICAL | wxRIGHT, m_panel->FromDIP(4));
-  m_dataSourceValue = new wxStaticText(m_panel, wxID_ANY, wxT("Waiting"));
-  footer->Add(m_dataSourceValue, 1, wxALIGN_CENTER_VERTICAL);
-  root->Add(footer, 0, wxEXPAND | wxALL, outer);
-
+  m_dashboard = new BoatInfoDashboardPanel(m_panel);
+  root->Add(m_dashboard, 1, wxEXPAND);
   m_panel->SetSizer(root);
-  UpdateVesselHeader();
-  RebuildInstrumentGrid();
+  RebuildDashboard();
   ApplyHostStyle();
 }
 
-void boatinfo_pi::RebuildInstrumentGrid() {
-  if (!m_panel || !m_instrumentScroll || !m_instrumentGrid) return;
-  m_instrumentGrid->Clear(true);
-  m_instruments.clear();
-  m_emptyHint = nullptr;
-
-  std::vector<const BoatInfoValue*> visible;
+void boatinfo_pi::RebuildDashboard() {
+  if (!m_dashboard) return;
+  std::vector<const BoatInfoValue*> ordered;
   for (std::map<wxString, BoatInfoValue>::const_iterator it = m_values.begin();
        it != m_values.end(); ++it) {
     if (it->second.visible && !IsIdentityPath(it->second.path))
-      visible.push_back(&it->second);
+      ordered.push_back(&it->second);
   }
-  std::sort(visible.begin(), visible.end(), ValueOrder);
+  std::sort(ordered.begin(), ordered.end(), ValueOrder);
+  std::vector<BoatInfoValue> values;
+  values.reserve(ordered.size());
+  for (size_t i = 0; i < ordered.size(); ++i) values.push_back(*ordered[i]);
 
-  wxColour background, text, secondary, accent;
-  ResolveHostColours(background, text, secondary, accent);
-  wxString currentCategory;
-  for (size_t i = 0; i < visible.size(); ++i) {
-    const BoatInfoValue& value = *visible[i];
-    if (value.category != currentCategory) {
-      currentCategory = value.category;
-      wxStaticText* category = new wxStaticText(
-          m_instrumentScroll, wxID_ANY, currentCategory.Upper());
-      wxFont categoryFont = category->GetFont();
-      categoryFont.SetWeight(wxFONTWEIGHT_BOLD);
-      category->SetFont(categoryFont);
-      category->SetForegroundColour(text);
-      m_instrumentGrid->Add(category, 0,
-                            wxEXPAND | wxLEFT | wxRIGHT | wxTOP,
-                            m_panel->FromDIP(5));
-
-      wxStaticLine* divider =
-          new wxStaticLine(m_instrumentScroll, wxID_ANY, wxDefaultPosition,
-                           wxDefaultSize, wxLI_HORIZONTAL);
-      divider->SetForegroundColour(secondary);
-      m_instrumentGrid->Add(divider, 0, wxEXPAND | wxLEFT | wxRIGHT | wxBOTTOM,
-                            m_panel->FromDIP(5));
-    }
-
-    BoatInfoInstrumentPanel* panel =
-        new BoatInfoInstrumentPanel(m_instrumentScroll, value);
-    m_instrumentGrid->Add(panel, 0, wxEXPAND | wxLEFT | wxRIGHT,
-                          m_panel->FromDIP(1));
-    m_instruments[value.key] = panel;
-  }
-
-  if (visible.empty()) {
-    m_emptyHint = new wxStaticText(
-        m_instrumentScroll, wxID_ANY,
-        wxT("No values selected. Open BoatInfo preferences to choose from "
-            "values observed on this vessel."));
-    m_emptyHint->Wrap(m_panel->FromDIP(290));
-    m_instrumentGrid->Add(m_emptyHint, 0, wxEXPAND | wxALL,
-                          m_panel->FromDIP(6));
-  }
-
-  ApplyHostStyle();
-  m_instrumentScroll->Layout();
-  m_instrumentScroll->FitInside();
-  m_panel->Layout();
+  m_dashboard->SetState(values, EffectiveText(m_values, kIdentityNameKey),
+                        EffectiveText(m_values, kIdentityMmsiKey),
+                        EffectiveText(m_values, kIdentityCallSignKey),
+                        m_sourceSummary);
 }
 
 void boatinfo_pi::ApplyHostStyle() {
@@ -664,6 +905,7 @@ void boatinfo_pi::ApplyHostStyle() {
 void boatinfo_pi::SetColorScheme(PI_ColorScheme cs) {
   m_colorScheme = cs;
   ApplyHostStyle();
+  RebuildDashboard();
 }
 
 BoatInfoValue& boatinfo_pi::EnsureValue(const wxString& key,
@@ -717,32 +959,7 @@ void boatinfo_pi::ApplyIdentityFallbacks() {
       value.lastUpdateSeconds = 0;
     }
   }
-  UpdateVesselHeader();
-}
-
-void boatinfo_pi::UpdateVesselHeader() {
-  if (!m_vesselPanel) return;
-  const wxString name = EffectiveText(m_values, kIdentityNameKey);
-  const wxString mmsi = EffectiveText(m_values, kIdentityMmsiKey);
-  const wxString callSign = EffectiveText(m_values, kIdentityCallSignKey);
-  bool signalK = false;
-  bool manual = false;
-  const wxString keys[] = {kIdentityNameKey, kIdentityMmsiKey,
-                           kIdentityCallSignKey};
-  for (size_t i = 0; i < 3; ++i) {
-    std::map<wxString, BoatInfoValue>::const_iterator it = m_values.find(keys[i]);
-    if (it == m_values.end() || !it->second.valid) continue;
-    if (it->second.manualFallback)
-      manual = true;
-    else
-      signalK = true;
-  }
-  wxString source;
-  if (signalK)
-    source = wxT("Signal K");
-  else if (manual)
-    source = wxT("Manual");
-  m_vesselPanel->SetIdentity(name, mmsi, callSign, source);
+  RebuildDashboard();
 }
 
 void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
@@ -755,6 +972,7 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
   value.semanticId = path;
   value.alternativeSource = false;
   value.freshnessSeconds = 30;
+  if (!configured) value.priority = BoatInfoValue::PRIORITY_DETAIL;
   wxString suggestion = value.suggestedLabel;
 
   if (value.source == wxT("OpenCPN")) {
@@ -764,7 +982,10 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
       suggestion = wxT("SOG");
       value.semanticId = wxT("navigation.sog");
       value.unit = wxT("kn");
-      if (!configured) value.visible = true;
+      if (!configured) {
+        value.visible = true;
+        value.priority = BoatInfoValue::PRIORITY_PRIMARY;
+      }
     } else if (path == wxT("navigation.courseovergroundtrue")) {
       suggestion = wxT("COG");
       value.semanticId = wxT("navigation.cog.true");
@@ -773,29 +994,44 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
       if (!configured) {
         value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
         value.visible = true;
+        value.priority = BoatInfoValue::PRIORITY_PRIMARY;
       }
     } else if (path == wxT("navigation.headingtrue")) {
       suggestion = wxT("Heading");
       value.semanticId = wxT("navigation.heading.true");
       value.unit = wxT("°");
       value.qualifier = wxT("T");
-      if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
+      if (!configured) {
+        value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
+        value.visible = true;
+        value.priority = BoatInfoValue::PRIORITY_SECONDARY;
+      }
     } else if (path == wxT("navigation.headingmagnetic")) {
       suggestion = wxT("Heading magnetic");
       value.semanticId = wxT("navigation.heading.magnetic");
       value.unit = wxT("°");
       value.qualifier = wxT("M");
-      if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
+      if (!configured) {
+        value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
+        value.visible = false;
+        value.priority = BoatInfoValue::PRIORITY_DETAIL;
+      }
     } else if (path == wxT("navigation.position.latitude")) {
       suggestion = wxT("Latitude");
       value.semanticId = wxT("navigation.latitude");
       value.unit.clear();
-      if (!configured) value.visible = true;
+      if (!configured) {
+        value.visible = false;
+        value.priority = BoatInfoValue::PRIORITY_DETAIL;
+      }
     } else if (path == wxT("navigation.position.longitude")) {
       suggestion = wxT("Longitude");
       value.semanticId = wxT("navigation.longitude");
       value.unit.clear();
-      if (!configured) value.visible = true;
+      if (!configured) {
+        value.visible = false;
+        value.priority = BoatInfoValue::PRIORITY_DETAIL;
+      }
     }
     value.suggestedLabel = suggestion;
     if (!value.labelCustomized) value.label = suggestion;
@@ -808,18 +1044,21 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
     value.freshnessSeconds = 300;
     value.visible = true;
     value.primitive = BoatInfoValue::PRIMITIVE_NONE;
+    value.priority = BoatInfoValue::PRIORITY_PRIMARY;
   } else if (path == wxT("mmsi")) {
     value.category = wxT("Vessel");
     suggestion = wxT("MMSI");
     value.freshnessSeconds = 300;
     value.visible = true;
     value.primitive = BoatInfoValue::PRIMITIVE_NONE;
+    value.priority = BoatInfoValue::PRIORITY_PRIMARY;
   } else if (path == wxT("communication.callsignvhf")) {
     value.category = wxT("Vessel");
     suggestion = wxT("Call sign");
     value.freshnessSeconds = 300;
     value.visible = true;
     value.primitive = BoatInfoValue::PRIMITIVE_NONE;
+    value.priority = BoatInfoValue::PRIORITY_PRIMARY;
   } else if (path.StartsWith(wxT("electrical.batteries."))) {
     value.category = wxT("Electrical");
     const wxString battery = BatteryName(path);
@@ -833,30 +1072,41 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
         value.primitive = BoatInfoValue::PRIMITIVE_LEVEL;
         value.visible = path.Find(wxT("service")) != wxNOT_FOUND ||
                         path.Find(wxT("house")) != wxNOT_FOUND;
+        value.priority = BoatInfoValue::PRIORITY_PRIMARY;
       }
     } else if (path.Find(wxT("timeremaining")) != wxNOT_FOUND) {
       suggestion = battery + wxT(" time remaining");
       value.unit = wxT("h");
+      if (!configured) value.priority = BoatInfoValue::PRIORITY_DETAIL;
     } else if (path.Find(wxT("dischargesincefull")) != wxNOT_FOUND) {
       suggestion = battery + wxT(" discharge since full");
       value.unit = wxT("Ah");
+      if (!configured) value.priority = BoatInfoValue::PRIORITY_DETAIL;
     } else if (path.Find(wxT("lifetimedischarge")) != wxNOT_FOUND) {
       suggestion = battery + wxT(" lifetime discharge");
       value.unit = wxT("Ah");
+      if (!configured) value.priority = BoatInfoValue::PRIORITY_DETAIL;
     } else if (path.Find(wxT("lifetimerecharge")) != wxNOT_FOUND) {
       suggestion = battery + wxT(" lifetime recharge");
       value.unit = wxT("Ah");
+      if (!configured) value.priority = BoatInfoValue::PRIORITY_DETAIL;
     } else if (path.EndsWith(wxT(".voltage"))) {
       suggestion = battery + wxT(" voltage");
       value.unit = wxT("V");
-      if (!configured)
+      if (!configured) {
         value.visible = path.Find(wxT("service")) != wxNOT_FOUND ||
                         path.Find(wxT("starter")) != wxNOT_FOUND;
+        value.priority = path.Find(wxT("service")) != wxNOT_FOUND
+                             ? BoatInfoValue::PRIORITY_SECONDARY
+                             : BoatInfoValue::PRIORITY_DETAIL;
+      }
     } else if (path.EndsWith(wxT(".current"))) {
       suggestion = battery + wxT(" current");
       value.unit = wxT("A");
-      if (!configured)
+      if (!configured) {
         value.visible = path.Find(wxT("service")) != wxNOT_FOUND;
+        value.priority = BoatInfoValue::PRIORITY_SECONDARY;
+      }
     } else if (path.EndsWith(wxT(".power"))) {
       suggestion = battery + wxT(" power");
       value.unit = wxT("W");
@@ -873,7 +1123,11 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
       value.bounded = true;
       value.minimum = 0.0;
       value.maximum = 100.0;
-      if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_LEVEL;
+      if (!configured) {
+        value.primitive = BoatInfoValue::PRIMITIVE_LEVEL;
+        value.visible = true;
+        value.priority = BoatInfoValue::PRIORITY_PRIMARY;
+      }
     }
   } else if (path.StartsWith(wxT("propulsion."))) {
     value.category = wxT("Propulsion");
@@ -883,13 +1137,24 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
     if (path.Find(wxT("revolutions")) != wxNOT_FOUND) {
       suggestion = engineName + wxT(" RPM");
       value.unit = wxT("rpm");
+      if (!configured) {
+        value.visible = true;
+        value.priority = BoatInfoValue::PRIORITY_SECONDARY;
+      }
     } else if (path.Find(wxT("temperature")) != wxNOT_FOUND) {
       suggestion = engineName + wxT(" temperature");
       value.unit = wxT("°C");
     }
   } else if (path.StartsWith(wxT("environment."))) {
     value.category = wxT("Environment");
-    if (path.Find(wxT("depth")) != wxNOT_FOUND) value.unit = wxT("m");
+    if (path.Find(wxT("depth")) != wxNOT_FOUND) {
+      value.unit = wxT("m");
+      suggestion = wxT("Depth");
+      if (!configured) {
+        value.visible = true;
+        value.priority = BoatInfoValue::PRIORITY_PRIMARY;
+      }
+    }
     if (path.Find(wxT("temperature")) != wxNOT_FOUND) value.unit = wxT("°C");
     if (path.Find(wxT("speed")) != wxNOT_FOUND) value.unit = wxT("kn");
     if (path.Find(wxT("angle")) != wxNOT_FOUND ||
@@ -902,6 +1167,10 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
     if (path.EndsWith(wxT("antennaaltitude"))) {
       suggestion = wxT("GNSS antenna altitude");
       value.unit = wxT("m");
+    }
+    if (!configured) {
+      value.visible = false;
+      value.priority = BoatInfoValue::PRIORITY_DETAIL;
     }
   } else if (path.StartsWith(wxT("navigation."))) {
     value.category = wxT("Navigation");
@@ -966,6 +1235,7 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
       value.unit = wxT("°");
       if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
     }
+    if (!configured) value.priority = BoatInfoValue::PRIORITY_DETAIL;
   }
 
   value.suggestedLabel = suggestion;
@@ -974,7 +1244,6 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
 
 void boatinfo_pi::ObserveNumeric(const wxString& key, const wxString& source,
                                  const wxString& path, double rawValue) {
-  const bool isNew = m_values.find(key) == m_values.end();
   BoatInfoValue& value = EnsureValue(key, source, path);
   value.value = rawValue;
   value.displayValue = rawValue;
@@ -1021,13 +1290,11 @@ void boatinfo_pi::ObserveNumeric(const wxString& key, const wxString& source,
   if (source == wxT("OpenCPN")) m_seenOpenCPN = true;
   if (source == wxT("Signal K")) m_seenSignalK = true;
   UpdateSourceSummary();
-  if (isNew && m_panel) RebuildInstrumentGrid();
-  UpdateInstrument(key);
+  RebuildDashboard();
 }
 
 void boatinfo_pi::ObserveText(const wxString& key, const wxString& source,
                               const wxString& path, const wxString& textValue) {
-  const bool isNew = m_values.find(key) == m_values.end();
   BoatInfoValue& value = EnsureValue(key, source, path);
   value.hasNumericValue = false;
   value.textValue = textValue;
@@ -1037,34 +1304,23 @@ void boatinfo_pi::ObserveText(const wxString& key, const wxString& source,
   value.lastUpdateSeconds = NowSeconds();
   if (source == wxT("Signal K")) m_seenSignalK = true;
   UpdateSourceSummary();
-  if (IsIdentityPath(path)) UpdateVesselHeader();
-  if (isNew && m_panel && !IsIdentityPath(path)) RebuildInstrumentGrid();
-  UpdateInstrument(key);
+  RebuildDashboard();
 }
 
 void boatinfo_pi::ObserveNoData(const wxString& key, const wxString& source,
                                 const wxString& path) {
-  const bool isNew = m_values.find(key) == m_values.end();
   BoatInfoValue& value = EnsureValue(key, source, path);
   value.valid = false;
   value.stale = false;
   value.manualFallback = false;
   value.lastUpdateSeconds = NowSeconds();
   if (IsIdentityPath(path)) ApplyIdentityFallbacks();
-  if (isNew && m_panel && !IsIdentityPath(path)) RebuildInstrumentGrid();
-  UpdateInstrument(key);
-}
-
-void boatinfo_pi::UpdateInstrument(const wxString& key) {
-  std::map<wxString, BoatInfoInstrumentPanel*>::iterator widget =
-      m_instruments.find(key);
-  std::map<wxString, BoatInfoValue>::iterator value = m_values.find(key);
-  if (widget != m_instruments.end() && value != m_values.end())
-    widget->second->SetModel(value->second);
+  RebuildDashboard();
 }
 
 void boatinfo_pi::RefreshFreshness() {
   const long long now = NowSeconds();
+  bool changed = false;
   for (std::map<wxString, BoatInfoValue>::iterator it = m_values.begin();
        it != m_values.end(); ++it) {
     BoatInfoValue& value = it->second;
@@ -1074,24 +1330,24 @@ void boatinfo_pi::RefreshFreshness() {
         now - value.lastUpdateSeconds > value.freshnessSeconds;
     if (value.stale != shouldBeStale) {
       value.stale = shouldBeStale;
-      UpdateInstrument(value.key);
+      changed = true;
     }
   }
+  if (changed) RebuildDashboard();
 }
 
 void boatinfo_pi::UpdateSourceSummary() {
-  if (!m_dataSourceValue) return;
   wxString summary;
   if (m_seenOpenCPN) summary += wxT("OpenCPN");
   if (m_seenSignalK) {
-    if (!summary.IsEmpty()) summary += wxT(" • ");
+    if (!summary.IsEmpty()) summary += wxT(" · ");
     summary += wxT("Signal K");
   }
   if (m_seenNmeaXdr) {
-    if (!summary.IsEmpty()) summary += wxT(" • ");
+    if (!summary.IsEmpty()) summary += wxT(" · ");
     summary += wxT("NMEA XDR");
   }
-  m_dataSourceValue->SetLabel(summary.IsEmpty() ? wxT("Waiting") : summary);
+  m_sourceSummary = summary.IsEmpty() ? wxT("Waiting") : summary;
 }
 
 void boatinfo_pi::SetPositionFixEx(PlugIn_Position_Fix_Ex& pfix) {
@@ -1123,6 +1379,7 @@ void boatinfo_pi::SetNMEASentence(wxString& sentence) {
       sentence.Mid(3, 3) == wxT("XDR")) {
     m_seenNmeaXdr = true;
     UpdateSourceSummary();
+    RebuildDashboard();
   }
 }
 
@@ -1131,6 +1388,7 @@ void boatinfo_pi::SetPluginMessage(wxString& message_id,
   if (message_id == wxT("OCPN_CORE_SIGNALK") && ParseSignalK(message_body)) {
     m_seenSignalK = true;
     UpdateSourceSummary();
+    RebuildDashboard();
   }
 }
 
@@ -1162,6 +1420,7 @@ void boatinfo_pi::ActivateVesselProfile(const wxString& signalKSelf) {
     value.labelCustomized = false;
     value.visible = false;
     value.primitive = BoatInfoValue::PRIMITIVE_VALUE;
+    value.priority = BoatInfoValue::PRIORITY_SECONDARY;
     ApplySemanticDefaults(value);
     ++it;
   }
@@ -1172,10 +1431,7 @@ void boatinfo_pi::ActivateVesselProfile(const wxString& signalKSelf) {
   LoadProfile(m_profileKey, false);
   EnsureIdentityValues();
   ApplyIdentityFallbacks();
-  if (m_panel) {
-    RebuildInstrumentGrid();
-    UpdateVesselHeader();
-  }
+  RebuildDashboard();
 }
 
 bool boatinfo_pi::ParseSignalK(const wxString& message) {
@@ -1245,17 +1501,19 @@ bool boatinfo_pi::ObserveSignalKPath(const wxString& path,
 
 void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
   wxDialog dialog(parent, wxID_ANY, wxT("BoatInfo preferences"),
-                  wxDefaultPosition, wxSize(900, 650),
+                  wxDefaultPosition, wxSize(1040, 680),
                   wxDEFAULT_DIALOG_STYLE | wxRESIZE_BORDER);
   wxBoxSizer* root = new wxBoxSizer(wxVERTICAL);
 
   wxStaticText* intro = new wxStaticText(
       &dialog, wxID_ANY,
-      wxT("BoatInfo learns own-vessel values as they are observed. Vessel "
-          "identity comes from Signal K when available. Manual identity below "
-          "is only used as a fallback. Display choices are stored separately "
-          "for each detected Signal K vessel."));
-  intro->Wrap(dialog.FromDIP(850));
+      wxT("BoatInfo is a responsive own-vessel status strip. It is docked below "
+          "the OpenCPN canvas, wraps selected values onto additional rows and "
+          "automatically simplifies Full → Compact → Minimal presentation when "
+          "space becomes tight. Detail values disappear first, then Secondary; "
+          "Primary values are protected as long as possible. No scrolling is "
+          "required in the live navigation view."));
+  intro->Wrap(dialog.FromDIP(990));
   root->Add(intro, 0, wxEXPAND | wxALL, dialog.FromDIP(12));
 
   wxStaticText* vesselTitle =
@@ -1277,8 +1535,7 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
   identityGrid->AddGrowableCol(1, 1);
   identityGrid->Add(new wxStaticText(&dialog, wxID_ANY, wxT("Manual name")), 0,
                     wxALIGN_CENTER_VERTICAL);
-  wxTextCtrl* manualName =
-      new wxTextCtrl(&dialog, wxID_ANY, m_manualVesselName);
+  wxTextCtrl* manualName = new wxTextCtrl(&dialog, wxID_ANY, m_manualVesselName);
   identityGrid->Add(manualName, 1, wxEXPAND);
   identityGrid->Add(new wxStaticText(&dialog, wxID_ANY, wxT("Manual MMSI")), 0,
                     wxALIGN_CENTER_VERTICAL);
@@ -1298,15 +1555,15 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
   wxScrolledWindow* scroll = new wxScrolledWindow(
       &dialog, wxID_ANY, wxDefaultPosition, wxDefaultSize, wxVSCROLL);
   scroll->SetScrollRate(0, dialog.FromDIP(10));
-  wxFlexGridSizer* grid = new wxFlexGridSizer(5, dialog.FromDIP(5),
+  wxFlexGridSizer* grid = new wxFlexGridSizer(6, dialog.FromDIP(5),
                                              dialog.FromDIP(10));
-  grid->AddGrowableCol(2, 1);
+  grid->AddGrowableCol(3, 1);
 
   wxFont headerFont = dialog.GetFont();
   headerFont.SetWeight(wxFONTWEIGHT_BOLD);
-  const wxString headers[] = {wxT("Show"), wxT("Source"), wxT("Name"),
-                              wxT("Display"), wxT("Path")};
-  for (size_t i = 0; i < 5; ++i) {
+  const wxString headers[] = {wxT("Show"), wxT("Priority"), wxT("Source"),
+                              wxT("Name"), wxT("Display"), wxT("Path")};
+  for (size_t i = 0; i < 6; ++i) {
     wxStaticText* header = new wxStaticText(scroll, wxID_ANY, headers[i]);
     header->SetFont(headerFont);
     grid->Add(header, 0, wxALIGN_CENTER_VERTICAL);
@@ -1329,7 +1586,7 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
           new wxStaticText(scroll, wxID_ANY, currentCategory.Upper());
       category->SetFont(headerFont);
       grid->Add(category, 0, wxTOP, dialog.FromDIP(12));
-      for (int column = 1; column < 5; ++column) grid->AddSpacer(1);
+      for (int column = 1; column < 6; ++column) grid->AddSpacer(1);
     }
 
     PreferenceRow row;
@@ -1337,6 +1594,15 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
     row.visible = new wxCheckBox(scroll, wxID_ANY, wxEmptyString);
     row.visible->SetValue(value.visible);
     grid->Add(row.visible, 0, wxALIGN_CENTER);
+
+    wxArrayString priorities;
+    priorities.Add(wxT("Primary"));
+    priorities.Add(wxT("Secondary"));
+    priorities.Add(wxT("Detail"));
+    row.priority = new wxChoice(scroll, wxID_ANY, wxDefaultPosition,
+                                wxDefaultSize, priorities);
+    row.priority->SetSelection(SelectionFromPriority(value.priority));
+    grid->Add(row.priority, 0, wxEXPAND);
 
     wxString sourceLabel = value.source;
     if (value.alternativeSource) sourceLabel += wxT(" (alt.)");
@@ -1398,8 +1664,7 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
     }
     ApplyIdentityFallbacks();
     SaveConfiguration();
-    RebuildInstrumentGrid();
-    UpdateVesselHeader();
+    RebuildDashboard();
   }
 }
 
@@ -1410,6 +1675,7 @@ void boatinfo_pi::ApplyPreferenceRows(const std::vector<PreferenceRow>& rows) {
     if (found == m_values.end()) continue;
     BoatInfoValue& value = found->second;
     value.visible = rows[i].visible->GetValue();
+    value.priority = PriorityFromSelection(rows[i].priority->GetSelection());
     value.primitive = PrimitiveFromSelection(rows[i].primitive->GetSelection());
     const wxString enteredLabel = rows[i].label->GetValue();
     value.label = enteredLabel.IsEmpty() ? value.suggestedLabel : enteredLabel;
@@ -1446,8 +1712,7 @@ void boatinfo_pi::LoadProfile(const wxString& profileKey, bool allowLegacy) {
   if (!hasCount) return;
 
   for (long i = 0; i < count; ++i) {
-    config->SetPath(basePath +
-                    wxString::Format(wxT("/Instrument%ld"), i));
+    config->SetPath(basePath + wxString::Format(wxT("/Instrument%ld"), i));
     wxString key, source, path, label, savedSuggestion;
     long primitive = 0;
     bool visible = false;
@@ -1462,11 +1727,16 @@ void boatinfo_pi::LoadProfile(const wxString& profileKey, bool allowLegacy) {
     config->Read(wxT("Primitive"), &primitive, 0L);
 
     BoatInfoValue& value = EnsureValue(key, source, path);
+    long priority = static_cast<long>(value.priority);
+    config->Read(wxT("Priority"), &priority, priority);
     value.userConfigured = true;
     value.visible = visible;
     if (primitive >= BoatInfoValue::PRIMITIVE_VALUE &&
         primitive <= BoatInfoValue::PRIMITIVE_NONE)
       value.primitive = static_cast<BoatInfoValue::Primitive>(primitive);
+    if (priority >= BoatInfoValue::PRIORITY_PRIMARY &&
+        priority <= BoatInfoValue::PRIORITY_DETAIL)
+      value.priority = static_cast<BoatInfoValue::Priority>(priority);
     if (!savedSuggestion.IsEmpty())
       value.labelCustomized = labelCustomized;
     else
@@ -1511,6 +1781,7 @@ void boatinfo_pi::SaveProfile(wxFileConfig* config,
     config->Write(wxT("LabelCustomized"), value.labelCustomized);
     config->Write(wxT("Visible"), value.visible);
     config->Write(wxT("Primitive"), static_cast<long>(value.primitive));
+    config->Write(wxT("Priority"), static_cast<long>(value.priority));
   }
 }
 
@@ -1523,14 +1794,7 @@ void boatinfo_pi::SaveConfiguration() {
   config->Flush();
 }
 
-void boatinfo_pi::ClearControlPointers() {
-  m_vesselPanel = nullptr;
-  m_instrumentScroll = nullptr;
-  m_instrumentGrid = nullptr;
-  m_emptyHint = nullptr;
-  m_dataSourceValue = nullptr;
-  m_instruments.clear();
-}
+void boatinfo_pi::ClearControlPointers() { m_dashboard = nullptr; }
 
 bool boatinfo_pi::DeInit() {
   SaveConfiguration();
