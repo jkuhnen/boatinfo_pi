@@ -19,17 +19,14 @@ class wxTimer;
 class wxWindow;
 
 struct BoatInfoValue {
-  // New presentation model. The current live dashboard intentionally renders
-  // PRESENTATION_TEXT only. The other modes are reserved for the next HMI
-  // iteration and can be introduced without another config-model migration.
   enum Presentation {
     PRESENTATION_TEXT = 0,
     PRESENTATION_DIGITAL,
     PRESENTATION_DIGITAL_ANALOG
   };
 
-  // Legacy PR #15 instrument modes are retained temporarily so existing test
-  // profiles can still be loaded. They no longer affect the live renderer.
+  // Legacy PR #15 modes remain readable in stored profiles. The stable v1
+  // live dashboard is text-only; these values no longer control rendering.
   enum Primitive {
     PRIMITIVE_VALUE = 0,
     PRIMITIVE_LEVEL,
@@ -42,6 +39,15 @@ struct BoatInfoValue {
     PRIORITY_PRIMARY = 0,
     PRIORITY_SECONDARY,
     PRIORITY_DETAIL
+  };
+
+  enum Validity {
+    VALIDITY_VALID = 0,
+    VALIDITY_STALE,
+    VALIDITY_NO_DATA,
+    VALIDITY_INVALID,
+    VALIDITY_OUT_OF_RANGE,
+    VALIDITY_UNKNOWN
   };
 
   wxString key;
@@ -59,8 +65,7 @@ struct BoatInfoValue {
   bool hasNumericValue = false;
   wxString textValue;
 
-  bool valid = false;
-  bool stale = false;
+  Validity validity = VALIDITY_NO_DATA;
   bool manualFallback = false;
   long long lastUpdateSeconds = 0;
   int freshnessSeconds = 30;
@@ -73,12 +78,13 @@ struct BoatInfoValue {
   Primitive primitive = PRIMITIVE_VALUE;  // legacy config compatibility only
   Priority priority = PRIORITY_SECONDARY;
 
-  // Normalized data retained for future digital presentations. No graphical
-  // Level/Tape/Trend is drawn in the current text-only dashboard.
+  // Normalized supporting data retained for later digital presentations.
   bool bounded = false;
   double minimum = 0.0;
   double maximum = 1.0;
   std::vector<double> trend;
+
+  bool IsCurrent() const { return validity == VALIDITY_VALID; }
 };
 
 class BoatInfoDashboardPanel;
@@ -112,7 +118,7 @@ private:
     wxCheckBox* visible = nullptr;
     wxChoice* priority = nullptr;
     wxTextCtrl* label = nullptr;
-    wxChoice* primitive = nullptr;  // legacy dialog wiring, text-only at runtime
+    wxChoice* presentation = nullptr;
   };
 
   void ApplyHostStyle();
@@ -138,6 +144,8 @@ private:
                    const wxString& path, const wxString& value);
   void ObserveNoData(const wxString& key, const wxString& source,
                      const wxString& path);
+  void ObserveUnknown(const wxString& key, const wxString& source,
+                      const wxString& path);
   BoatInfoValue& EnsureValue(const wxString& key, const wxString& source,
                              const wxString& path);
   void ApplySemanticDefaults(BoatInfoValue& value);
