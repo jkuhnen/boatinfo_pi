@@ -36,6 +36,6 @@ wxString boatinfo_pi::GetShortDescription() {
 wxString boatinfo_pi::GetLongDescription() {
   return wxT(
       "BoatInfo discovers own-vessel values from OpenCPN data sources and "
-      "presents user-selected navigation and onboard information as compact "
-      "digital instruments.");
+      "presents user-selected navigation and onboard information in a compact "
+      "responsive text dashboard.");
 }
