@@ -19,10 +19,23 @@ class wxTimer;
 class wxWindow;
 
 struct BoatInfoValue {
+  // New presentation model. The current live dashboard intentionally renders
+  // PRESENTATION_TEXT only. The other modes are reserved for the next HMI
+  // iteration and can be introduced without another config-model migration.
   enum Presentation {
     PRESENTATION_TEXT = 0,
     PRESENTATION_DIGITAL,
     PRESENTATION_DIGITAL_ANALOG
+  };
+
+  // Legacy PR #15 instrument modes are retained temporarily so existing test
+  // profiles can still be loaded. They no longer affect the live renderer.
+  enum Primitive {
+    PRIMITIVE_VALUE = 0,
+    PRIMITIVE_LEVEL,
+    PRIMITIVE_TAPE,
+    PRIMITIVE_TREND,
+    PRIMITIVE_NONE
   };
 
   enum Priority {
@@ -57,10 +70,11 @@ struct BoatInfoValue {
   bool labelCustomized = false;
   bool alternativeSource = false;
   Presentation presentation = PRESENTATION_TEXT;
+  Primitive primitive = PRIMITIVE_VALUE;  // legacy config compatibility only
   Priority priority = PRIORITY_SECONDARY;
 
-  // Kept in the normalized model for future digital presentations. The current
-  // live dashboard intentionally renders text only.
+  // Normalized data retained for future digital presentations. No graphical
+  // Level/Tape/Trend is drawn in the current text-only dashboard.
   bool bounded = false;
   double minimum = 0.0;
   double maximum = 1.0;
@@ -98,7 +112,7 @@ private:
     wxCheckBox* visible = nullptr;
     wxChoice* priority = nullptr;
     wxTextCtrl* label = nullptr;
-    wxChoice* presentation = nullptr;
+    wxChoice* primitive = nullptr;  // legacy dialog wiring, text-only at runtime
   };
 
   void ApplyHostStyle();
