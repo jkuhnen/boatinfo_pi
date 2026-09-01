@@ -19,12 +19,10 @@ class wxTimer;
 class wxWindow;
 
 struct BoatInfoValue {
-  enum Primitive {
-    PRIMITIVE_VALUE = 0,
-    PRIMITIVE_LEVEL,
-    PRIMITIVE_TAPE,
-    PRIMITIVE_TREND,
-    PRIMITIVE_NONE
+  enum Presentation {
+    PRESENTATION_TEXT = 0,
+    PRESENTATION_DIGITAL,
+    PRESENTATION_DIGITAL_ANALOG
   };
 
   enum Priority {
@@ -58,9 +56,11 @@ struct BoatInfoValue {
   bool userConfigured = false;
   bool labelCustomized = false;
   bool alternativeSource = false;
-  Primitive primitive = PRIMITIVE_VALUE;
+  Presentation presentation = PRESENTATION_TEXT;
   Priority priority = PRIORITY_SECONDARY;
 
+  // Kept in the normalized model for future digital presentations. The current
+  // live dashboard intentionally renders text only.
   bool bounded = false;
   double minimum = 0.0;
   double maximum = 1.0;
@@ -98,7 +98,7 @@ private:
     wxCheckBox* visible = nullptr;
     wxChoice* priority = nullptr;
     wxTextCtrl* label = nullptr;
-    wxChoice* primitive = nullptr;
+    wxChoice* presentation = nullptr;
   };
 
   void ApplyHostStyle();
