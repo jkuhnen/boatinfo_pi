@@ -2,15 +2,15 @@
 
 BoatInfo is a compact OpenCPN plugin for **own-vessel information**. It generalizes the original BenchyNav prototype so the plugin is useful on any vessel rather than being tied to one boat.
 
-## Stable v1 product shape
+## Stable 1.1.0 product shape
 
-The first stable BoatInfo presentation is deliberately a **text-first responsive own-vessel status strip** docked below the OpenCPN chart area.
+BoatInfo 1.1.0 uses a deliberately **text-first responsive own-vessel status strip** docked below the OpenCPN chart area.
 
 The live view is intentionally simple:
 
 - no simulated analogue gauges;
 - no circular dials or needles;
-- no decorative Level/Tape/Trend graphics in v1;
+- no decorative Level/Tape/Trend graphics in 1.1.0;
 - selected measurements are rendered as label + value + explicit unit;
 - categories remain spatially coherent and use full-width divider lines;
 - value cells use fixed widths per responsive density level so live updates and resizing do not continuously reflow columns;
@@ -18,13 +18,11 @@ The live view is intentionally simple:
 - the live navigation view never requires scrolling;
 - lower-priority values are omitted when the available pane becomes too small.
 
-Future presentation modes are intentionally outside the stable v1 scope. The product direction is:
+Future presentation modes are intentionally outside the 1.1.0 scope:
 
-1. `Text` — the stable v1 baseline;
+1. `Text` — stable baseline;
 2. `Digital` — later DevKit-native Value/Level/Tape/Trend presentation where the information task justifies it;
 3. `Digital + Analog` — optional later presentation only where an analogue relationship adds real operational value.
-
-The stable text baseline is retained even after richer modes are introduced.
 
 ## Configurable vessel values
 
@@ -55,7 +53,7 @@ In **BoatInfo preferences** the user controls:
 - **Name** — editable suggested label;
 - source/path information for diagnosis and source selection.
 
-The current live renderer is text-only. Legacy `Value / Level / Tape / Trend` profile fields created during PR development remain readable for migration compatibility but do not control the stable v1 live renderer. They will be replaced by the explicit `Text / Digital / Digital + Analog` presentation selector in a later dedicated change.
+The stable live renderer is text-only. Legacy `Value / Level / Tape / Trend` profile fields created during development remain readable only for migration compatibility and do not control the live renderer. A later dedicated change will introduce the explicit product-level presentation choice `Text / Digital / Digital + Analog`.
 
 The **Apply / Anwenden** action updates the live view without closing preferences.
 
@@ -71,7 +69,7 @@ BoatInfo uses Signal K own-vessel identity when available:
 
 Manual name, MMSI and call sign are fallback values only. Signal K remains authoritative when it supplies the corresponding identity.
 
-Configuration is stored per Signal K `self` vessel identifier. The same OpenCPN/Surface installation can therefore move between vessels and restore the appropriate visibility, labels and priorities for each vessel profile.
+Configuration is stored per Signal K `self` vessel identifier. The same OpenCPN installation can therefore move between vessels and restore the appropriate visibility, labels and priorities for each vessel profile.
 
 ## Responsive layout
 
@@ -85,48 +83,23 @@ The renderer chooses between three density levels according to the available wid
 
 Each level has a fixed value-cell width. Categories determine block geometry from their contained value count; the final category boundary on a row may extend to the right edge, while individual value cells stay fixed-width and left-aligned.
 
-If all selected values cannot fit:
-
-1. `Detail` values are omitted first;
-2. then `Secondary` values;
-3. `Primary` values are protected as long as possible.
-
-The live view shows a small `+N hidden` indication when selected values are omitted because of space.
+If all selected values cannot fit, `Detail` values are omitted first, then `Secondary`; `Primary` values are protected as long as possible. The live view shows a small `+N hidden` indication when selected values are omitted because of space.
 
 ## Units and normalization
 
-Signal K values use SI semantics where recognized. BoatInfo normalizes common measurements for presentation, including:
+Signal K values use SI semantics where recognized. BoatInfo normalizes common measurements for presentation, including speed to knots, angular quantities to degrees, temperature from Kelvin to degrees Celsius, state-of-charge and tank-level ratios to percent, remaining time from seconds to hours, battery cumulative charge/discharge from Coulomb to ampere-hours and revolutions per second to rpm.
 
-- speed to knots;
-- angular quantities to degrees;
-- temperature from Kelvin to degrees Celsius;
-- state-of-charge and tank-level ratios to percent;
-- remaining time from seconds to hours;
-- battery cumulative charge/discharge from Coulomb to ampere-hours;
-- revolutions per second to rpm.
-
-OpenCPN latitude and longitude are formatted through OpenCPN's nautical coordinate formatter rather than shown as bare decimal degrees.
-
-A numeric zero is a valid measurement and is never treated as missing data.
+OpenCPN latitude and longitude are formatted through OpenCPN's nautical coordinate formatter rather than shown as bare decimal degrees. A numeric zero is a valid measurement and is never treated as missing data.
 
 ## Validity
 
-BoatInfo never presents a stale or unusable measurement as a current numeric value.
+BoatInfo never presents a stale or unusable measurement as a current numeric value. A current valid measurement shows label, value and unit. When a measurement is no longer usable/current, its fixed cell remains in place, while the numeric value and unit disappear so the surrounding dashboard geometry does not jump.
 
-For the stable text renderer:
-
-- a current valid measurement shows label, value and unit;
-- when the measurement is no longer usable/current, its fixed cell remains in place so the dashboard geometry does not jump;
-- the numeric value and unit disappear;
-- the remaining label changes visual treatment, so loss of the current value is signalled both by the missing value and by styling rather than by color alone.
-
-The normalized model reserves the DevKit validity vocabulary `valid`, `stale`, `no data`, `invalid`, `out of range` and `unknown`. The stable acquisition path already distinguishes current/stale/unavailable operationally; finer provider-specific invalid/out-of-range/unknown classification can be extended without changing the dashboard layout contract.
+The normalized model reserves the DevKit validity vocabulary `valid`, `stale`, `no data`, `invalid`, `out of range` and `unknown`. Provider-specific classification can be extended without changing the dashboard layout contract.
 
 ## Maritime HMI and DevKit alignment
 
-BoatInfo follows the shared `jkuhnen/opencpn-plugin-devkit` design guidance.
-
-The stable v1 baseline follows these principles:
+BoatInfo follows the shared `jkuhnen/opencpn-plugin-devkit` design guidance:
 
 - present vessel data as information rather than pictures of instruments;
 - keep chart/navigation surfaces primary;
@@ -148,31 +121,47 @@ These maritime HMI references are **design guidance only**. BoatInfo is not clai
 
 ## Architecture
 
-The implementation keeps the major responsibilities separable:
+The implementation keeps major responsibilities separable:
 
-- OpenCPN/plugin lifecycle, data normalization and configuration in the plugin/core layer;
-- vessel identity handling separately;
-- responsive rendering in the dashboard layer.
+- OpenCPN/plugin lifecycle, data normalization and configuration in `src/boatinfo_core.cpp`;
+- vessel identity/plugin metadata in `src/boatinfo_identity.cpp`;
+- responsive rendering in `src/boatinfo_dashboard.cpp`.
 
 The dashboard receives normalized presentation values rather than parsing Signal K in its paint path.
 
-Discovery currently means **values observed in the live data stream**. BoatInfo does not yet query a Signal K server separately for its complete metadata/path catalog.
+Discovery currently means **values observed in the live data stream**. BoatInfo does not query a Signal K server separately for its complete metadata/path catalog.
 
 ## Build identity
 
 Plugin name: `BoatInfo`
 
-Package/common identifier: `boatinfo`
+Package identifier: `boatinfo_pi`
 
 Version: `1.1.0`
 
 Target OpenCPN plugin API: `1.18`
 
-The existing FrontEnd2-compatible build infrastructure is retained to avoid mixing product work with an unrelated build-system migration.
+### Windows local package build
 
-## Stable-v1 runtime validation
+Run from a Visual Studio Developer Command Prompt with the OpenCPN wxWidgets build available to CMake:
 
-The PR development cycle has already been exercised in real OpenCPN with live/synthetic Signal K data for:
+```bat
+bld.bat
+```
+
+Equivalent explicit commands:
+
+```bat
+rmdir /s /q build-test 2>nul
+cmake -S . -B build-test -G "Visual Studio 18 2026" -A Win32 -DOCPN_TARGET=MSVC
+cmake --build build-test --target package --config RelWithDebInfo
+```
+
+No machine-specific path is stored in the build script.
+
+## 1.1.0 runtime validation
+
+The stable text dashboard has been exercised in real OpenCPN with live/synthetic Signal K data for:
 
 - automatic discovery of previously unknown scalar Signal K paths;
 - own-vessel identity and per-vessel profile behavior;
@@ -187,12 +176,14 @@ The PR development cycle has already been exercised in real OpenCPN with live/sy
 - text-only display of navigation, propulsion, electrical and environment values;
 - common SI conversions and explicit units.
 
-Before merging/releasing the stable version, perform one final Windows package build and smoke test of the current head, including DAY/DUSK/NIGHT and a stale/no-data transition after the final DevKit-alignment changes.
+## Legacy build infrastructure
+
+The repository still contains inherited FrontEnd2-era CI/platform scaffolding for Android, Debian, Flatpak, macOS and related packaging. It is **not part of the currently validated BoatInfo 1.1.0 Windows build path** and should not be interpreted as a statement that those targets are currently supported or tested. Cleanup or re-validation of that infrastructure should happen in a separate dedicated change.
 
 ## Development workflow
 
-Changes start from a GitHub issue, use a dedicated branch and arrive through a pull request. See the repository `AGENTS.md` and the shared DevKit before editing.
+Changes start from a GitHub issue where appropriate, use a dedicated branch and arrive through a pull request. See the repository `AGENTS.md` and the shared DevKit before editing.
 
 ## Repository history
 
-This repository started as BenchyNav on top of the community `testplugin`/FrontEnd2 scaffold. BoatInfo was refactored in place so the proven OpenCPN integration could be retained while obsolete scaffold code and resources were removed.
+This repository started as BenchyNav on top of the community `testplugin`/FrontEnd2 scaffold. BoatInfo was refactored in place so the proven OpenCPN integration could be retained while the active plugin code and product identity were modernized. Some inherited build/CI scaffolding remains intentionally isolated pending a separate cleanup decision.
