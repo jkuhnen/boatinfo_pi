@@ -36,29 +36,14 @@ const wxString kIdentityCallSignKey = wxT("signalk:communication.callsignVhf");
 
 bool JsonNumber(const wxJSONValue& value, double& result) {
   switch (value.GetType()) {
-    case wxJSONTYPE_DOUBLE:
-      result = value.AsDouble();
-      break;
-    case wxJSONTYPE_INT:
-      result = static_cast<double>(value.AsInt());
-      break;
-    case wxJSONTYPE_UINT:
-      result = static_cast<double>(value.AsUInt());
-      break;
-    case wxJSONTYPE_LONG:
-      result = static_cast<double>(value.AsLong());
-      break;
-    case wxJSONTYPE_ULONG:
-      result = static_cast<double>(value.AsULong());
-      break;
-    case wxJSONTYPE_SHORT:
-      result = static_cast<double>(value.AsShort());
-      break;
-    case wxJSONTYPE_USHORT:
-      result = static_cast<double>(value.AsUShort());
-      break;
-    default:
-      return false;
+    case wxJSONTYPE_DOUBLE: result = value.AsDouble(); break;
+    case wxJSONTYPE_INT: result = static_cast<double>(value.AsInt()); break;
+    case wxJSONTYPE_UINT: result = static_cast<double>(value.AsUInt()); break;
+    case wxJSONTYPE_LONG: result = static_cast<double>(value.AsLong()); break;
+    case wxJSONTYPE_ULONG: result = static_cast<double>(value.AsULong()); break;
+    case wxJSONTYPE_SHORT: result = static_cast<double>(value.AsShort()); break;
+    case wxJSONTYPE_USHORT: result = static_cast<double>(value.AsUShort()); break;
+    default: return false;
   }
   return std::isfinite(result);
 }
@@ -79,8 +64,8 @@ wxString SafeProfileKey(const wxString& input) {
     const wxChar c = input[i];
     const bool safe = (c >= wxT('a') && c <= wxT('z')) ||
                       (c >= wxT('A') && c <= wxT('Z')) ||
-                      (c >= wxT('0') && c <= wxT('9')) || c == wxT('_') ||
-                      c == wxT('-');
+                      (c >= wxT('0') && c <= wxT('9')) ||
+                      c == wxT('_') || c == wxT('-');
     result += safe ? c : wxT('_');
   }
   return result.IsEmpty() ? wxT("default") : result;
@@ -98,8 +83,8 @@ wxString HumanizeToken(const wxString& token) {
   for (size_t i = 0; i < token.length(); ++i) {
     const wxChar c = token[i];
     const bool upper = c >= wxT('A') && c <= wxT('Z');
-    const bool previousLower =
-        i > 0 && token[i - 1] >= wxT('a') && token[i - 1] <= wxT('z');
+    const bool previousLower = i > 0 && token[i - 1] >= wxT('a') &&
+                               token[i - 1] <= wxT('z');
     if (upper && previousLower) out += wxT(' ');
     out += (c == wxT('_') || c == wxT('-')) ? wxT(' ') : c;
   }
@@ -108,86 +93,76 @@ wxString HumanizeToken(const wxString& token) {
   return out;
 }
 
-wxString SuggestedLabelFromPath(const wxString& path) {
-  const int dot = path.Find(wxT('.'), true);
-  return HumanizeToken(dot == wxNOT_FOUND ? path : path.Mid(dot + 1));
+wxArrayString SplitPath(const wxString& path) {
+  wxArrayString parts;
+  wxString current;
+  for (size_t i = 0; i < path.length(); ++i) {
+    if (path[i] == wxT('.')) {
+      if (!current.IsEmpty()) parts.Add(current);
+      current.clear();
+    } else {
+      current += path[i];
+    }
+  }
+  if (!current.IsEmpty()) parts.Add(current);
+  return parts;
 }
 
-wxString PathSegmentAfter(const wxString& path, const wxString& prefix) {
-  if (!path.StartsWith(prefix)) return wxEmptyString;
-  const wxString remainder = path.Mid(prefix.length());
-  const int dot = remainder.Find(wxT('.'));
-  return dot == wxNOT_FOUND ? remainder : remainder.Left(dot);
+wxString CategoryFromPath(const wxString& path) {
+  const wxArrayString parts = SplitPath(path);
+  if (parts.IsEmpty()) return wxT("Other");
+  return HumanizeToken(parts[0]);
 }
 
-wxString BatteryName(const wxString& path) {
-  const wxString id = PathSegmentAfter(path, wxT("electrical.batteries."));
-  const wxString lower = id.Lower();
-  if (lower == wxT("service") || lower == wxT("house") ||
-      lower == wxT("housebank"))
-    return wxT("Service battery");
-  if (lower == wxT("starter") || lower == wxT("start"))
-    return wxT("Starter battery");
-  if (id.IsEmpty()) return wxT("Battery");
-  return HumanizeToken(id) + wxT(" battery");
-}
-
-wxString TankName(const wxString& path) {
-  if (!path.StartsWith(wxT("tanks."))) return wxT("Tank");
-  wxString remainder = path.Mid(6);
-  const int firstDot = remainder.Find(wxT('.'));
-  const wxString type = firstDot == wxNOT_FOUND ? remainder
-                                                : remainder.Left(firstDot);
-  remainder = firstDot == wxNOT_FOUND ? wxEmptyString
-                                      : remainder.Mid(firstDot + 1);
-  const int secondDot = remainder.Find(wxT('.'));
-  const wxString id = secondDot == wxNOT_FOUND ? remainder
-                                               : remainder.Left(secondDot);
-  wxString label = HumanizeToken(type);
-  if (!id.IsEmpty() && id != wxT("0")) label += wxT(" ") + HumanizeToken(id);
-  return label;
+wxString LabelFromPath(const wxString& path) {
+  const wxArrayString parts = SplitPath(path);
+  if (parts.IsEmpty()) return path;
+  wxString label;
+  const size_t start = parts.size() > 1 ? 1 : 0;
+  for (size_t i = start; i < parts.size(); ++i) {
+    if (!label.IsEmpty()) label += wxT(" ");
+    label += HumanizeToken(parts[i]);
+  }
+  return label.IsEmpty() ? HumanizeToken(parts[0]) : label;
 }
 
 bool IsLegacyAutoLabel(const wxString& label) {
   const wxString lower = label.Lower();
   return lower == wxT("voltage") || lower == wxT("current") ||
          lower == wxT("power") || lower == wxT("service battery") ||
+         lower == wxT("service battery voltage") ||
+         lower == wxT("starter battery voltage") ||
+         lower == wxT("service battery soc") ||
          lower == wxT("course over ground true") ||
-         lower == wxT("speed over ground") ||
+         lower == wxT("speed over ground") || lower == wxT("heading") ||
          lower == wxT("discharge since full") ||
          lower == wxT("time remaining") || lower == wxT("antenna altitude") ||
          lower == wxT("datetime") || lower == wxT("latitude") ||
          lower == wxT("longitude") || lower == wxT("cog") ||
-         lower == wxT("sog") || lower == wxT("angle apparent");
+         lower == wxT("sog") || lower == wxT("angle apparent") ||
+         lower == wxT("apparent wind angle") ||
+         lower == wxT("apparent wind speed") ||
+         lower == wxT("true wind angle") || lower == wxT("true wind speed") ||
+         lower == wxT("depth");
 }
 
 BoatInfoValue::Primitive PrimitiveFromSelection(int selection) {
   switch (selection) {
-    case 1:
-      return BoatInfoValue::PRIMITIVE_LEVEL;
-    case 2:
-      return BoatInfoValue::PRIMITIVE_TAPE;
-    case 3:
-      return BoatInfoValue::PRIMITIVE_TREND;
-    case 4:
-      return BoatInfoValue::PRIMITIVE_NONE;
-    default:
-      return BoatInfoValue::PRIMITIVE_VALUE;
+    case 1: return BoatInfoValue::PRIMITIVE_LEVEL;
+    case 2: return BoatInfoValue::PRIMITIVE_TAPE;
+    case 3: return BoatInfoValue::PRIMITIVE_TREND;
+    case 4: return BoatInfoValue::PRIMITIVE_NONE;
+    default: return BoatInfoValue::PRIMITIVE_VALUE;
   }
 }
 
 int SelectionFromPrimitive(BoatInfoValue::Primitive primitive) {
   switch (primitive) {
-    case BoatInfoValue::PRIMITIVE_LEVEL:
-      return 1;
-    case BoatInfoValue::PRIMITIVE_TAPE:
-      return 2;
-    case BoatInfoValue::PRIMITIVE_TREND:
-      return 3;
-    case BoatInfoValue::PRIMITIVE_NONE:
-      return 4;
-    default:
-      return 0;
+    case BoatInfoValue::PRIMITIVE_LEVEL: return 1;
+    case BoatInfoValue::PRIMITIVE_TAPE: return 2;
+    case BoatInfoValue::PRIMITIVE_TREND: return 3;
+    case BoatInfoValue::PRIMITIVE_NONE: return 4;
+    default: return 0;
   }
 }
 
@@ -208,37 +183,20 @@ int CategoryRank(const wxString& category) {
   if (category == wxT("Electrical")) return 1;
   if (category == wxT("Tanks")) return 2;
   if (category == wxT("Propulsion")) return 3;
-  if (category == wxT("Wind")) return 4;
-  if (category == wxT("Environment")) return 5;
-  return 6;
+  if (category == wxT("Environment")) return 4;
+  return 5;
 }
 
 int SemanticRank(const BoatInfoValue& value) {
   const wxString path = value.path.Lower();
-  if (value.category == wxT("Navigation")) {
-    if (path.Find(wxT("courseoverground")) != wxNOT_FOUND) return 0;
-    if (path.Find(wxT("speedoverground")) != wxNOT_FOUND) return 1;
-    if (path.Find(wxT("heading")) != wxNOT_FOUND) return 2;
-    if (path.Find(wxT("latitude")) != wxNOT_FOUND) return 8;
-    if (path.Find(wxT("longitude")) != wxNOT_FOUND) return 9;
-  } else if (value.category == wxT("Electrical")) {
-    if (path.Find(wxT("stateofcharge")) != wxNOT_FOUND) return 0;
-    if (path.Find(wxT("service.voltage")) != wxNOT_FOUND ||
-        path.Find(wxT("house.voltage")) != wxNOT_FOUND)
-      return 1;
-    if (path.Find(wxT("current")) != wxNOT_FOUND) return 2;
-    if (path.Find(wxT("starter.voltage")) != wxNOT_FOUND) return 3;
-  } else if (value.category == wxT("Propulsion")) {
-    if (path.Find(wxT("revolutions")) != wxNOT_FOUND) return 0;
-    if (path.Find(wxT("temperature")) != wxNOT_FOUND) return 1;
-  } else if (value.category == wxT("Wind")) {
-    if (path.Find(wxT("speedapparent")) != wxNOT_FOUND) return 0;
-    if (path.Find(wxT("angleapparent")) != wxNOT_FOUND) return 1;
-    if (path.Find(wxT("speedtrue")) != wxNOT_FOUND) return 2;
-    if (path.Find(wxT("angletrue")) != wxNOT_FOUND) return 3;
-  } else if (value.category == wxT("Environment")) {
-    if (path.Find(wxT("depth")) != wxNOT_FOUND) return 0;
-  }
+  if (path.Find(wxT("speedoverground")) != wxNOT_FOUND) return 0;
+  if (path.Find(wxT("courseoverground")) != wxNOT_FOUND) return 1;
+  if (path.Find(wxT("heading")) != wxNOT_FOUND) return 2;
+  if (path.Find(wxT("stateofcharge")) != wxNOT_FOUND) return 0;
+  if (path.Find(wxT("voltage")) != wxNOT_FOUND) return 1;
+  if (path.Find(wxT("current")) != wxNOT_FOUND) return 2;
+  if (path.Find(wxT("revolutions")) != wxNOT_FOUND) return 0;
+  if (path.Find(wxT("depth")) != wxNOT_FOUND) return 0;
   return 10;
 }
 
@@ -246,6 +204,8 @@ bool ValueOrder(const BoatInfoValue* a, const BoatInfoValue* b) {
   const int aCategory = CategoryRank(a->category);
   const int bCategory = CategoryRank(b->category);
   if (aCategory != bCategory) return aCategory < bCategory;
+  if (a->category.CmpNoCase(b->category) != 0)
+    return a->category.CmpNoCase(b->category) < 0;
   if (a->priority != b->priority) return a->priority < b->priority;
   const int aSemantic = SemanticRank(*a);
   const int bSemantic = SemanticRank(*b);
@@ -287,6 +247,90 @@ void ApplyColoursRecursive(wxWindow* window, const wxColour& background,
     ApplyColoursRecursive(node->GetData(), background, text);
   window->Refresh(false);
 }
+
+void ApplyPathSemantics(BoatInfoValue& value, bool configured) {
+  const wxString path = value.path.Lower();
+
+  value.category = CategoryFromPath(value.path);
+  value.suggestedLabel = LabelFromPath(value.path);
+  if (!value.labelCustomized) value.label = value.suggestedLabel;
+  value.semanticId = path;
+  value.alternativeSource = false;
+  value.unit.clear();
+  value.qualifier.clear();
+  value.bounded = false;
+  value.minimum = 0.0;
+  value.maximum = 1.0;
+  value.freshnessSeconds = 30;
+  if (!configured) {
+    value.visible = false;
+    value.priority = BoatInfoValue::PRIORITY_DETAIL;
+    value.primitive = BoatInfoValue::PRIMITIVE_VALUE;
+  }
+
+  if (IsIdentityPath(path)) {
+    value.category = wxT("Vessel");
+    value.visible = true;
+    value.priority = BoatInfoValue::PRIORITY_PRIMARY;
+    value.primitive = BoatInfoValue::PRIMITIVE_NONE;
+    value.freshnessSeconds = 300;
+    return;
+  }
+
+  if (path.Find(wxT("stateofcharge")) != wxNOT_FOUND ||
+      path.Find(wxT("currentlevel")) != wxNOT_FOUND) {
+    value.unit = wxT("%");
+    value.bounded = true;
+    value.minimum = 0.0;
+    value.maximum = 100.0;
+    if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_LEVEL;
+  } else if (path.Find(wxT("timeremaining")) != wxNOT_FOUND) {
+    value.unit = wxT("h");
+  } else if (path.Find(wxT("dischargesincefull")) != wxNOT_FOUND ||
+             path.Find(wxT("lifetimedischarge")) != wxNOT_FOUND ||
+             path.Find(wxT("lifetimerecharge")) != wxNOT_FOUND) {
+    value.unit = wxT("Ah");
+  } else if (path.Find(wxT("temperature")) != wxNOT_FOUND) {
+    value.unit = wxT("°C");
+  } else if (path.Find(wxT("revolutions")) != wxNOT_FOUND) {
+    value.unit = wxT("rpm");
+  } else if (path.Find(wxT("speed")) != wxNOT_FOUND) {
+    value.unit = wxT("kn");
+  } else if (path.Find(wxT("angle")) != wxNOT_FOUND ||
+             path.Find(wxT("direction")) != wxNOT_FOUND ||
+             path.Find(wxT("heading")) != wxNOT_FOUND ||
+             path.Find(wxT("course")) != wxNOT_FOUND ||
+             path.Find(wxT("bearing")) != wxNOT_FOUND) {
+    value.unit = wxT("°");
+    if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
+  } else if (path.EndsWith(wxT(".voltage"))) {
+    value.unit = wxT("V");
+  } else if (path.EndsWith(wxT(".current"))) {
+    value.unit = wxT("A");
+  } else if (path.EndsWith(wxT(".power"))) {
+    value.unit = wxT("W");
+  } else if (path.Find(wxT("depth")) != wxNOT_FOUND ||
+             path.Find(wxT("altitude")) != wxNOT_FOUND) {
+    value.unit = wxT("m");
+  }
+
+  if (!configured) {
+    if (path == wxT("navigation.speedoverground") ||
+        path == wxT("navigation.courseovergroundtrue") ||
+        path.Find(wxT("stateofcharge")) != wxNOT_FOUND ||
+        path.Find(wxT("currentlevel")) != wxNOT_FOUND ||
+        path.Find(wxT("depth")) != wxNOT_FOUND) {
+      value.visible = true;
+      value.priority = BoatInfoValue::PRIORITY_PRIMARY;
+    } else if (path.Find(wxT("revolutions")) != wxNOT_FOUND ||
+               path.Find(wxT("headingtrue")) != wxNOT_FOUND ||
+               path.EndsWith(wxT(".voltage")) ||
+               path.EndsWith(wxT(".current"))) {
+      value.visible = true;
+      value.priority = BoatInfoValue::PRIORITY_SECONDARY;
+    }
+  }
+}
 }  // namespace
 
 extern "C" BOATINFO_EXPORT opencpn_plugin* create_pi(void* ppimgr) {
@@ -324,7 +368,7 @@ int boatinfo_pi::Init() {
       .CaptionVisible(false)
       .Bottom()
       .BestSize(-1, m_panel->FromDIP(165))
-      .MinSize(-1, m_panel->FromDIP(82))
+      .MinSize(-1, m_panel->FromDIP(78))
       .MaxSize(-1, m_panel->FromDIP(240))
       .Floatable(false)
       .Movable(false)
@@ -407,7 +451,7 @@ BoatInfoValue& boatinfo_pi::EnsureValue(const wxString& key,
   value.key = key;
   value.source = source;
   value.path = path;
-  value.suggestedLabel = SuggestedLabelFromPath(path);
+  value.suggestedLabel = LabelFromPath(path);
   value.label = value.suggestedLabel;
   ApplySemanticDefaults(value);
   return m_values.insert(std::make_pair(key, value)).first->second;
@@ -448,23 +492,15 @@ void boatinfo_pi::ApplyIdentityFallbacks() {
 }
 
 void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
-  const wxString path = value.path.Lower();
   const bool configured = value.userConfigured;
-  if (value.suggestedLabel.IsEmpty())
-    value.suggestedLabel = SuggestedLabelFromPath(value.path);
-
-  value.category = wxT("Technical");
-  value.semanticId = path;
-  value.alternativeSource = false;
-  value.freshnessSeconds = 30;
-  if (!configured) value.priority = BoatInfoValue::PRIORITY_DETAIL;
-  wxString suggestion = value.suggestedLabel;
+  ApplyPathSemantics(value, configured);
 
   if (value.source == wxT("OpenCPN")) {
     value.category = wxT("Navigation");
     value.freshnessSeconds = 10;
+    const wxString path = value.path.Lower();
     if (path == wxT("navigation.speedoverground")) {
-      suggestion = wxT("SOG");
+      value.suggestedLabel = wxT("SOG");
       value.semanticId = wxT("navigation.sog");
       value.unit = wxT("kn");
       if (!configured) {
@@ -472,252 +508,46 @@ void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
         value.priority = BoatInfoValue::PRIORITY_PRIMARY;
       }
     } else if (path == wxT("navigation.courseovergroundtrue")) {
-      suggestion = wxT("COG");
+      value.suggestedLabel = wxT("COG");
       value.semanticId = wxT("navigation.cog.true");
       value.unit = wxT("°");
       value.qualifier = wxT("T");
       if (!configured) {
-        value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
         value.visible = true;
         value.priority = BoatInfoValue::PRIORITY_PRIMARY;
+        value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
       }
     } else if (path == wxT("navigation.headingtrue")) {
-      suggestion = wxT("Heading");
-      value.semanticId = wxT("navigation.heading.true");
+      value.suggestedLabel = wxT("Heading");
       value.unit = wxT("°");
       value.qualifier = wxT("T");
       if (!configured) {
-        value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
         value.visible = true;
         value.priority = BoatInfoValue::PRIORITY_SECONDARY;
+        value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
       }
     } else if (path == wxT("navigation.headingmagnetic")) {
-      suggestion = wxT("Heading magnetic");
-      value.semanticId = wxT("navigation.heading.magnetic");
+      value.suggestedLabel = wxT("Heading magnetic");
       value.unit = wxT("°");
       value.qualifier = wxT("M");
-      if (!configured) value.visible = false;
-    } else if (path == wxT("navigation.position.latitude")) {
-      suggestion = wxT("Latitude");
-      value.semanticId = wxT("navigation.latitude");
-      value.unit.clear();
-      if (!configured) value.visible = false;
-    } else if (path == wxT("navigation.position.longitude")) {
-      suggestion = wxT("Longitude");
-      value.semanticId = wxT("navigation.longitude");
+    } else if (path.Find(wxT("position.latitude")) != wxNOT_FOUND ||
+               path.Find(wxT("position.longitude")) != wxNOT_FOUND) {
       value.unit.clear();
       if (!configured) value.visible = false;
     }
-    value.suggestedLabel = suggestion;
-    if (!value.labelCustomized) value.label = suggestion;
-    return;
+    if (!value.labelCustomized) value.label = value.suggestedLabel;
+  } else {
+    const wxString path = value.path.Lower();
+    if (path == wxT("navigation.speedoverground") ||
+        path == wxT("navigation.courseovergroundtrue") ||
+        path == wxT("navigation.headingtrue") ||
+        path == wxT("navigation.headingmagnetic") ||
+        path == wxT("navigation.position.latitude") ||
+        path == wxT("navigation.position.longitude")) {
+      value.alternativeSource = true;
+      if (!configured) value.visible = false;
+    }
   }
-
-  if (path == wxT("name")) {
-    value.category = wxT("Vessel");
-    suggestion = wxT("Vessel name");
-    value.freshnessSeconds = 300;
-    value.visible = true;
-    value.primitive = BoatInfoValue::PRIMITIVE_NONE;
-    value.priority = BoatInfoValue::PRIORITY_PRIMARY;
-  } else if (path == wxT("mmsi")) {
-    value.category = wxT("Vessel");
-    suggestion = wxT("MMSI");
-    value.freshnessSeconds = 300;
-    value.visible = true;
-    value.primitive = BoatInfoValue::PRIMITIVE_NONE;
-    value.priority = BoatInfoValue::PRIORITY_PRIMARY;
-  } else if (path == wxT("communication.callsignvhf")) {
-    value.category = wxT("Vessel");
-    suggestion = wxT("Call sign");
-    value.freshnessSeconds = 300;
-    value.visible = true;
-    value.primitive = BoatInfoValue::PRIMITIVE_NONE;
-    value.priority = BoatInfoValue::PRIORITY_PRIMARY;
-  } else if (path.StartsWith(wxT("electrical.batteries."))) {
-    value.category = wxT("Electrical");
-    const wxString battery = BatteryName(path);
-    if (path.Find(wxT("stateofcharge")) != wxNOT_FOUND) {
-      suggestion = battery + wxT(" SOC");
-      value.unit = wxT("%");
-      value.bounded = true;
-      value.minimum = 0.0;
-      value.maximum = 100.0;
-      if (!configured) {
-        value.primitive = BoatInfoValue::PRIMITIVE_LEVEL;
-        value.visible = path.Find(wxT("service")) != wxNOT_FOUND ||
-                        path.Find(wxT("house")) != wxNOT_FOUND;
-        value.priority = BoatInfoValue::PRIORITY_PRIMARY;
-      }
-    } else if (path.Find(wxT("timeremaining")) != wxNOT_FOUND) {
-      suggestion = battery + wxT(" time remaining");
-      value.unit = wxT("h");
-    } else if (path.Find(wxT("dischargesincefull")) != wxNOT_FOUND) {
-      suggestion = battery + wxT(" discharge since full");
-      value.unit = wxT("Ah");
-    } else if (path.EndsWith(wxT(".voltage"))) {
-      suggestion = battery + wxT(" voltage");
-      value.unit = wxT("V");
-      if (!configured) {
-        value.visible = path.Find(wxT("service")) != wxNOT_FOUND ||
-                        path.Find(wxT("starter")) != wxNOT_FOUND;
-        value.priority = path.Find(wxT("service")) != wxNOT_FOUND
-                             ? BoatInfoValue::PRIORITY_SECONDARY
-                             : BoatInfoValue::PRIORITY_DETAIL;
-      }
-    } else if (path.EndsWith(wxT(".current"))) {
-      suggestion = battery + wxT(" current");
-      value.unit = wxT("A");
-      if (!configured) {
-        value.visible = path.Find(wxT("service")) != wxNOT_FOUND;
-        value.priority = BoatInfoValue::PRIORITY_SECONDARY;
-      }
-    } else if (path.EndsWith(wxT(".power"))) {
-      suggestion = battery + wxT(" power");
-      value.unit = wxT("W");
-    } else if (path.EndsWith(wxT(".temperature"))) {
-      suggestion = battery + wxT(" temperature");
-      value.unit = wxT("°C");
-    }
-  } else if (path.StartsWith(wxT("tanks."))) {
-    value.category = wxT("Tanks");
-    const wxString tank = TankName(path);
-    if (path.Find(wxT("currentlevel")) != wxNOT_FOUND) {
-      suggestion = tank + wxT(" level");
-      value.unit = wxT("%");
-      value.bounded = true;
-      value.minimum = 0.0;
-      value.maximum = 100.0;
-      if (!configured) {
-        value.primitive = BoatInfoValue::PRIMITIVE_LEVEL;
-        value.visible = true;
-        value.priority = BoatInfoValue::PRIORITY_PRIMARY;
-      }
-    }
-  } else if (path.StartsWith(wxT("propulsion."))) {
-    value.category = wxT("Propulsion");
-    const wxString engine = PathSegmentAfter(path, wxT("propulsion."));
-    const wxString engineName =
-        engine.IsEmpty() ? wxT("Engine") : HumanizeToken(engine);
-    if (path.Find(wxT("revolutions")) != wxNOT_FOUND) {
-      suggestion = engineName + wxT(" RPM");
-      value.unit = wxT("rpm");
-      if (!configured) {
-        value.visible = true;
-        value.priority = BoatInfoValue::PRIORITY_SECONDARY;
-      }
-    } else if (path.Find(wxT("temperature")) != wxNOT_FOUND) {
-      suggestion = engineName + wxT(" temperature");
-      value.unit = wxT("°C");
-    }
-  } else if (path.StartsWith(wxT("environment.wind."))) {
-    value.category = wxT("Wind");
-    if (path == wxT("environment.wind.angleapparent")) {
-      suggestion = wxT("Apparent wind angle");
-      value.unit = wxT("°");
-      if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
-    } else if (path == wxT("environment.wind.speedapparent")) {
-      suggestion = wxT("Apparent wind speed");
-      value.unit = wxT("kn");
-    } else if (path.Find(wxT("angletrue")) != wxNOT_FOUND) {
-      suggestion = wxT("True wind angle");
-      value.unit = wxT("°");
-      if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
-    } else if (path.Find(wxT("speedtrue")) != wxNOT_FOUND) {
-      suggestion = wxT("True wind speed");
-      value.unit = wxT("kn");
-    } else if (path.Find(wxT("directiontrue")) != wxNOT_FOUND) {
-      suggestion = wxT("True wind direction");
-      value.unit = wxT("°");
-      if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
-    } else if (path.Find(wxT("angle")) != wxNOT_FOUND ||
-               path.Find(wxT("direction")) != wxNOT_FOUND) {
-      value.unit = wxT("°");
-    } else if (path.Find(wxT("speed")) != wxNOT_FOUND) {
-      value.unit = wxT("kn");
-    }
-    if (!configured) value.priority = BoatInfoValue::PRIORITY_SECONDARY;
-  } else if (path.StartsWith(wxT("environment."))) {
-    value.category = wxT("Environment");
-    if (path.Find(wxT("depth")) != wxNOT_FOUND) {
-      value.unit = wxT("m");
-      suggestion = wxT("Depth");
-      if (!configured) {
-        value.visible = true;
-        value.priority = BoatInfoValue::PRIORITY_PRIMARY;
-      }
-    }
-    if (path.Find(wxT("temperature")) != wxNOT_FOUND) value.unit = wxT("°C");
-    if (path.Find(wxT("speed")) != wxNOT_FOUND) value.unit = wxT("kn");
-  } else if (path.StartsWith(wxT("navigation.gnss."))) {
-    value.category = wxT("Technical");
-    if (path.EndsWith(wxT("antennaaltitude"))) {
-      suggestion = wxT("GNSS antenna altitude");
-      value.unit = wxT("m");
-    }
-    if (!configured) value.visible = false;
-  } else if (path.StartsWith(wxT("navigation."))) {
-    value.category = wxT("Navigation");
-    if (path == wxT("navigation.speedoverground")) {
-      suggestion = wxT("SOG");
-      value.semanticId = wxT("navigation.sog");
-      value.unit = wxT("kn");
-      value.alternativeSource = true;
-      if (!configured) value.visible = false;
-    } else if (path == wxT("navigation.courseovergroundtrue")) {
-      suggestion = wxT("COG");
-      value.semanticId = wxT("navigation.cog.true");
-      value.unit = wxT("°");
-      value.qualifier = wxT("T");
-      value.alternativeSource = true;
-      if (!configured) {
-        value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
-        value.visible = false;
-      }
-    } else if (path == wxT("navigation.headingtrue")) {
-      suggestion = wxT("Heading");
-      value.semanticId = wxT("navigation.heading.true");
-      value.unit = wxT("°");
-      value.qualifier = wxT("T");
-      value.alternativeSource = true;
-      if (!configured) value.visible = false;
-    } else if (path == wxT("navigation.headingmagnetic")) {
-      suggestion = wxT("Heading magnetic");
-      value.semanticId = wxT("navigation.heading.magnetic");
-      value.unit = wxT("°");
-      value.qualifier = wxT("M");
-      value.alternativeSource = true;
-      if (!configured) value.visible = false;
-    } else if (path == wxT("navigation.position.latitude")) {
-      suggestion = wxT("Latitude");
-      value.semanticId = wxT("navigation.latitude");
-      value.unit.clear();
-      value.alternativeSource = true;
-      if (!configured) value.visible = false;
-    } else if (path == wxT("navigation.position.longitude")) {
-      suggestion = wxT("Longitude");
-      value.semanticId = wxT("navigation.longitude");
-      value.unit.clear();
-      value.alternativeSource = true;
-      if (!configured) value.visible = false;
-    } else if (path == wxT("navigation.datetime")) {
-      value.category = wxT("Technical");
-      suggestion = wxT("Navigation datetime");
-      value.freshnessSeconds = 60;
-    } else if (path.Find(wxT("speed")) != wxNOT_FOUND) {
-      value.unit = wxT("kn");
-    } else if (path.Find(wxT("heading")) != wxNOT_FOUND ||
-               path.Find(wxT("course")) != wxNOT_FOUND ||
-               path.Find(wxT("bearing")) != wxNOT_FOUND ||
-               path.Find(wxT("angle")) != wxNOT_FOUND) {
-      value.unit = wxT("°");
-      if (!configured) value.primitive = BoatInfoValue::PRIMITIVE_TAPE;
-    }
-    if (!configured) value.priority = BoatInfoValue::PRIORITY_DETAIL;
-  }
-
-  value.suggestedLabel = suggestion;
-  if (!value.labelCustomized) value.label = suggestion;
 }
 
 void boatinfo_pi::ObserveNumeric(const wxString& key, const wxString& source,
@@ -803,9 +633,9 @@ void boatinfo_pi::RefreshFreshness() {
        it != m_values.end(); ++it) {
     BoatInfoValue& value = it->second;
     if (IsIdentityPath(value.path) || value.manualFallback) continue;
-    const bool shouldBeStale =
-        value.valid && value.lastUpdateSeconds > 0 &&
-        now - value.lastUpdateSeconds > value.freshnessSeconds;
+    const bool shouldBeStale = value.valid && value.lastUpdateSeconds > 0 &&
+                               now - value.lastUpdateSeconds >
+                                   value.freshnessSeconds;
     if (value.stale != shouldBeStale) {
       value.stale = shouldBeStale;
       changed = true;
@@ -985,10 +815,10 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
 
   wxStaticText* intro = new wxStaticText(
       &dialog, wxID_ANY,
-      wxT("BoatInfo keeps vessel data in stable category blocks. Selected "
-          "values simplify from Full to Compact to Minimal when space becomes "
-          "tight; whole categories wrap together so labels and values remain "
-          "easy to find."));
+      wxT("BoatInfo derives Signal K categories and suggested names directly "
+          "from the data path. Selected values remain grouped by their source "
+          "category and the live strip simplifies only when available space "
+          "requires it."));
   intro->Wrap(dialog.FromDIP(990));
   root->Add(intro, 0, wxEXPAND | wxALL, dialog.FromDIP(12));
 
