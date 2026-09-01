@@ -72,6 +72,22 @@ Manual name, MMSI and call sign are fallback values only. Signal K remains autho
 
 Configuration is stored per Signal K `self` vessel identifier. The same OpenCPN installation can therefore move between vessels and restore the appropriate visibility, labels and priorities for each vessel profile.
 
+Identity input accepts the normal Signal K leaf paths as well as pathless
+(`path: ""`) vessel objects and full root models containing the own vessel.
+BoatInfo ignores identity values from a foreign vessel `context`. An MMSI may be
+used from an explicit string or numeric `mmsi` value; as a fallback it is
+derived from `self` only when that identifier contains an unambiguous complete
+nine-digit MMSI component. UUID digits are never treated as an MMSI.
+
+The focused parser checks cover these representative inputs:
+
+- standard `name`, `mmsi` and `communication.callsignVhf` leaf deltas;
+- a pathless root identity delta;
+- a nested `communication.callsignVhf` value;
+- a foreign vessel context, which is rejected;
+- a `self` identifier with an exact nine-digit MMSI fallback;
+- a UUID-based `self`, which does not produce a synthetic MMSI.
+
 ## Responsive layout
 
 BoatInfo is bottom-docked because the displayed data belongs to the vessel rather than to one chart canvas. OpenCPN single- and split-screen chart layouts therefore remain above the same vessel-global status strip.

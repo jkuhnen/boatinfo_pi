@@ -35,8 +35,10 @@ add_library(boatinfo_pi SHARED
     src/boatinfo_core.cpp
     src/boatinfo_dashboard.cpp
     src/boatinfo_identity.cpp
+    src/boatinfo_signalk.cpp
     include/boatinfo_pi.h
     include/boatinfo_dashboard.h
+    include/boatinfo_signalk.h
 )
 
 target_include_directories(boatinfo_pi PRIVATE
@@ -58,6 +60,22 @@ target_link_libraries(boatinfo_pi PRIVATE
     ocpn::wxjson
     ${wxWidgets_LIBRARIES}
 )
+
+include(CTest)
+if(BUILD_TESTING)
+  add_executable(boatinfo_signalk_tests
+      tests/boatinfo_signalk_test.cpp
+      src/boatinfo_signalk.cpp
+  )
+  target_include_directories(boatinfo_signalk_tests PRIVATE
+      ${CMAKE_CURRENT_SOURCE_DIR}/include
+  )
+  target_link_libraries(boatinfo_signalk_tests PRIVATE
+      ocpn::wxjson
+      ${wxWidgets_LIBRARIES}
+  )
+  add_test(NAME boatinfo_signalk_tests COMMAND boatinfo_signalk_tests)
+endif()
 
 if(WIN32)
   add_subdirectory(opencpn-libs/WindowsHeaders)

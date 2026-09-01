@@ -1,5 +1,6 @@
 #include "boatinfo_pi.h"
 #include "boatinfo_dashboard.h"
+#include "boatinfo_signalk.h"
 
 #include <algorithm>
 #include <cmath>
@@ -10,7 +11,6 @@
 #include <wx/datetime.h>
 #include <wx/dialog.h>
 #include <wx/fileconf.h>
-#include <wx/jsonreader.h>
 #include <wx/jsonval.h>
 #include <wx/scrolwin.h>
 #include <wx/settings.h>
@@ -50,11 +50,6 @@ bool JsonNumber(const wxJSONValue& value, double& result) {
 
 long long NowSeconds() {
   return static_cast<long long>(wxDateTime::Now().GetTicks());
-}
-
-wxString NormalizeSignalKSelf(const wxString& self) {
-  if (self.IsEmpty() || self.StartsWith(wxT("vessels."))) return self;
-  return wxT("vessels.") + self;
 }
 
 wxString SafeProfileKey(const wxString& input) {
@@ -479,6 +474,33 @@ void boatinfo_pi::ApplyIdentityFallbacks() {
   RebuildDashboard();
 }
 
+bool boatinfo_pi::ApplySignalKIdentity(const wxJSONValue& model) {
+  BoatInfoSignalKIdentity identity;
+  if (!ExtractBoatInfoSignalKIdentity(model, m_signalKSelf, identity))
+    return false;
+
+  if (identity.hasName)
+    ObserveText(kIdentityNameKey, wxT("Signal K"), wxT("name"),
+                identity.name);
+  if (identity.hasMmsi)
+    ObserveText(kIdentityMmsiKey, wxT("Signal K"), wxT("mmsi"),
+                identity.mmsi);
+  if (identity.hasCallSign)
+    ObserveText(kIdentityCallSignKey, wxT("Signal K"),
+                wxT("communication.callsignVhf"), identity.callSign);
+  return true;
+}
+
+void boatinfo_pi::ApplySignalKSelfMmsiFallback() {
+  EnsureIdentityValues();
+  BoatInfoValue& value = m_values[kIdentityMmsiKey];
+  if (value.valid && !value.manualFallback) return;
+
+  wxString mmsi;
+  if (DeriveBoatInfoMmsiFromSelf(m_signalKSelf, mmsi))
+    ObserveText(kIdentityMmsiKey, wxT("Signal K"), wxT("mmsi"), mmsi);
+}
+
 void boatinfo_pi::ApplySemanticDefaults(BoatInfoValue& value) {
   const bool configured = value.userConfigured;
   ApplyPathSemantics(value, configured);
@@ -689,7 +711,7 @@ void boatinfo_pi::SetPluginMessage(wxString& message_id,
 }
 
 void boatinfo_pi::ActivateVesselProfile(const wxString& signalKSelf) {
-  const wxString normalized = NormalizeSignalKSelf(signalKSelf);
+  const wxString normalized = NormalizeBoatInfoSignalKSelf(signalKSelf);
   if (normalized.IsEmpty()) return;
   const wxString nextProfile = SafeProfileKey(normalized);
   if (nextProfile == m_profileKey && normalized == m_signalKSelf) return;
@@ -731,42 +753,33 @@ void boatinfo_pi::ActivateVesselProfile(const wxString& signalKSelf) {
 }
 
 bool boatinfo_pi::ParseSignalK(const wxString& message) {
-  wxJSONValue root;
-  wxJSONReader reader;
-  if (reader.Parse(message, &root) != 0 || !root.IsObject()) return false;
+  BoatInfoSignalKMessage parsed;
+  if (!ParseBoatInfoSignalKMessage(message, parsed)) return false;
 
   bool handled = false;
-  if (root.HasMember(wxT("self")) && root[wxT("self")].IsString()) {
-    const wxString self = NormalizeSignalKSelf(root[wxT("self")].AsString());
-    if (!self.IsEmpty()) {
-      ActivateVesselProfile(self);
-      handled = true;
-    }
+  if (parsed.hasSelf && !parsed.self.IsEmpty()) {
+    ActivateVesselProfile(parsed.self);
+    handled = true;
   }
 
-  if (root.HasMember(wxT("context")) && root[wxT("context")].IsString()) {
-    const wxString context = NormalizeSignalKSelf(root[wxT("context")].AsString());
-    if (!m_signalKSelf.IsEmpty() && context != m_signalKSelf) return handled;
-  }
-  if (!root.HasMember(wxT("updates")) || !root[wxT("updates")].IsArray())
+  if (parsed.hasContext &&
+      !IsBoatInfoOwnVesselContext(parsed.context, m_signalKSelf)) {
+    ApplySignalKSelfMmsiFallback();
     return handled;
+  }
 
-  wxJSONValue& updates = root[wxT("updates")];
-  for (int i = 0; i < updates.Size(); ++i) {
-    wxJSONValue& update = updates[i];
-    if (!update.IsObject() || !update.HasMember(wxT("values")) ||
-        !update[wxT("values")].IsArray())
-      continue;
-    wxJSONValue& values = update[wxT("values")];
-    for (int j = 0; j < values.Size(); ++j) {
-      wxJSONValue& item = values[j];
-      if (!item.IsObject() || !item.HasMember(wxT("path")) ||
-          !item[wxT("path")].IsString() || !item.HasMember(wxT("value")))
-        continue;
-      handled = ObserveSignalKPath(item[wxT("path")].AsString(),
-                                   item[wxT("value")]) || handled;
+  handled = ApplySignalKIdentity(parsed.root) || handled;
+
+  for (size_t i = 0; i < parsed.values.size(); ++i) {
+    const BoatInfoSignalKValue& item = parsed.values[i];
+    if (item.path.IsEmpty() && item.value.IsObject()) {
+      handled = ApplySignalKIdentity(item.value) || handled;
+    } else {
+      handled = ObserveSignalKPath(item.path, item.value) || handled;
     }
   }
+
+  ApplySignalKSelfMmsiFallback();
   return handled;
 }
 

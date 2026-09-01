@@ -144,6 +144,8 @@ private:
   void UpdateSourceSummary();
   void EnsureIdentityValues();
   void ApplyIdentityFallbacks();
+  bool ApplySignalKIdentity(const wxJSONValue& model);
+  void ApplySignalKSelfMmsiFallback();
   void ActivateVesselProfile(const wxString& signalKSelf);
 
   bool ParseSignalK(const wxString& message);
