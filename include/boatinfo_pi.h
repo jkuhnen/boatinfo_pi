@@ -128,7 +128,7 @@ private:
     wxCheckBox* visible = nullptr;
     wxChoice* priority = nullptr;
     wxTextCtrl* label = nullptr;
-    wxChoice* primitive = nullptr;  // legacy config compatibility in v1
+    wxChoice* presentation = nullptr;
   };
 
   void ApplyHostStyle();

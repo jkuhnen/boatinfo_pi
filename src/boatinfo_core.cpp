@@ -146,25 +146,13 @@ bool IsLegacyAutoLabel(const wxString& label) {
          lower == wxT("depth");
 }
 
-BoatInfoValue::Primitive PrimitiveFromSelection(int selection) {
-  switch (selection) {
-    case 1: return BoatInfoValue::PRIMITIVE_LEVEL;
-    case 2: return BoatInfoValue::PRIMITIVE_TAPE;
-    case 3: return BoatInfoValue::PRIMITIVE_TREND;
-    case 4: return BoatInfoValue::PRIMITIVE_NONE;
-    default: return BoatInfoValue::PRIMITIVE_VALUE;
-  }
+BoatInfoValue::Presentation PresentationFromSelection(int) {
+  // Stable 1.1.0 exposes Text only. Later modes can extend this mapping when
+  // their renderers and product behavior are implemented.
+  return BoatInfoValue::PRESENTATION_TEXT;
 }
 
-int SelectionFromPrimitive(BoatInfoValue::Primitive primitive) {
-  switch (primitive) {
-    case BoatInfoValue::PRIMITIVE_LEVEL: return 1;
-    case BoatInfoValue::PRIMITIVE_TAPE: return 2;
-    case BoatInfoValue::PRIMITIVE_TREND: return 3;
-    case BoatInfoValue::PRIMITIVE_NONE: return 4;
-    default: return 0;
-  }
-}
+int SelectionFromPresentation(BoatInfoValue::Presentation) { return 0; }
 
 BoatInfoValue::Priority PriorityFromSelection(int selection) {
   if (selection == 0) return BoatInfoValue::PRIORITY_PRIMARY;
@@ -868,7 +856,7 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
   wxFont headerFont = dialog.GetFont();
   headerFont.SetWeight(wxFONTWEIGHT_BOLD);
   const wxString headers[] = {wxT("Show"), wxT("Priority"), wxT("Source"),
-                              wxT("Name"), wxT("Display"), wxT("Path")};
+                              wxT("Name"), wxT("Presentation"), wxT("Path")};
   for (size_t i = 0; i < 6; ++i) {
     wxStaticText* header = new wxStaticText(scroll, wxID_ANY, headers[i]);
     header->SetFont(headerFont);
@@ -920,16 +908,13 @@ void boatinfo_pi::ShowPreferencesDialog(wxWindow* parent) {
                                                      : value.label);
     grid->Add(row.label, 1, wxEXPAND);
 
-    wxArrayString choices;
-    choices.Add(wxT("Value"));
-    choices.Add(wxT("Level"));
-    choices.Add(wxT("Tape"));
-    choices.Add(wxT("Trend"));
-    choices.Add(wxT("No display"));
-    row.primitive = new wxChoice(scroll, wxID_ANY, wxDefaultPosition,
-                                 wxDefaultSize, choices);
-    row.primitive->SetSelection(SelectionFromPrimitive(value.primitive));
-    grid->Add(row.primitive, 0, wxEXPAND);
+    wxArrayString presentations;
+    presentations.Add(wxT("Text"));
+    row.presentation = new wxChoice(scroll, wxID_ANY, wxDefaultPosition,
+                                    wxDefaultSize, presentations);
+    row.presentation->SetSelection(
+        SelectionFromPresentation(value.presentation));
+    grid->Add(row.presentation, 0, wxEXPAND);
 
     wxStaticText* pathText = new wxStaticText(scroll, wxID_ANY, value.path);
     pathText->SetToolTip(value.path);
@@ -987,7 +972,8 @@ void boatinfo_pi::ApplyPreferenceRows(const std::vector<PreferenceRow>& rows) {
     BoatInfoValue& value = found->second;
     value.visible = rows[i].visible->GetValue();
     value.priority = PriorityFromSelection(rows[i].priority->GetSelection());
-    value.primitive = PrimitiveFromSelection(rows[i].primitive->GetSelection());
+    value.presentation =
+        PresentationFromSelection(rows[i].presentation->GetSelection());
     const wxString enteredLabel = rows[i].label->GetValue();
     value.label = enteredLabel.IsEmpty() ? value.suggestedLabel : enteredLabel;
     value.labelCustomized = value.label != value.suggestedLabel;
@@ -1025,7 +1011,8 @@ void boatinfo_pi::LoadProfile(const wxString& profileKey, bool allowLegacy) {
   for (long i = 0; i < count; ++i) {
     config->SetPath(basePath + wxString::Format(wxT("/Instrument%ld"), i));
     wxString key, source, path, label, savedSuggestion;
-    long primitive = 0;
+    long primitive = BoatInfoValue::PRIMITIVE_VALUE;
+    long presentation = BoatInfoValue::PRESENTATION_TEXT;
     bool visible = false;
     bool labelCustomized = false;
     if (!config->Read(wxT("Key"), &key) || key.IsEmpty()) continue;
@@ -1036,6 +1023,8 @@ void boatinfo_pi::LoadProfile(const wxString& profileKey, bool allowLegacy) {
     config->Read(wxT("LabelCustomized"), &labelCustomized, false);
     config->Read(wxT("Visible"), &visible, false);
     config->Read(wxT("Primitive"), &primitive, 0L);
+    config->Read(wxT("Presentation"), &presentation,
+                 static_cast<long>(BoatInfoValue::PRESENTATION_TEXT));
 
     BoatInfoValue& value = EnsureValue(key, source, path);
     long priority = static_cast<long>(value.priority);
@@ -1045,6 +1034,10 @@ void boatinfo_pi::LoadProfile(const wxString& profileKey, bool allowLegacy) {
     if (primitive >= BoatInfoValue::PRIMITIVE_VALUE &&
         primitive <= BoatInfoValue::PRIMITIVE_NONE)
       value.primitive = static_cast<BoatInfoValue::Primitive>(primitive);
+    if (presentation >= BoatInfoValue::PRESENTATION_TEXT &&
+        presentation <= BoatInfoValue::PRESENTATION_DIGITAL_ANALOG)
+      value.presentation =
+          static_cast<BoatInfoValue::Presentation>(presentation);
     if (priority >= BoatInfoValue::PRIORITY_PRIMARY &&
         priority <= BoatInfoValue::PRIORITY_DETAIL)
       value.priority = static_cast<BoatInfoValue::Priority>(priority);
@@ -1092,6 +1085,8 @@ void boatinfo_pi::SaveProfile(wxFileConfig* config,
     config->Write(wxT("LabelCustomized"), value.labelCustomized);
     config->Write(wxT("Visible"), value.visible);
     config->Write(wxT("Primitive"), static_cast<long>(value.primitive));
+    config->Write(wxT("Presentation"),
+                  static_cast<long>(value.presentation));
     config->Write(wxT("Priority"), static_cast<long>(value.priority));
   }
 }

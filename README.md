@@ -51,9 +51,10 @@ In **BoatInfo preferences** the user controls:
 - **Show** — whether the value belongs to the live BoatInfo view;
 - **Priority** — `Primary`, `Secondary` or `Detail` for responsive omission;
 - **Name** — editable suggested label;
+- **Presentation** — `Text` for the stable 1.1.0 dashboard;
 - source/path information for diagnosis and source selection.
 
-The stable live renderer is text-only. Legacy `Value / Level / Tape / Trend` profile fields created during development remain readable only for migration compatibility and do not control the live renderer. A later dedicated change will introduce the explicit product-level presentation choice `Text / Digital / Digital + Analog`.
+The stable live renderer and the visible Preferences presentation are text-only. Legacy `Value / Level / Tape / Trend / No display` primitive profile fields created during development remain readable only for migration compatibility and do not control the live renderer or visible settings. The model reserves `Digital` and `Digital + Analog` for later dedicated work, but neither mode is exposed or implemented in 1.1.0.
 
 The **Apply / Anwenden** action updates the live view without closing preferences.
 
