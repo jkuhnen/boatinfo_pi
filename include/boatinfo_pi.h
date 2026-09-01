@@ -13,10 +13,7 @@
 class wxCheckBox;
 class wxChoice;
 class wxFileConfig;
-class wxFlexGridSizer;
 class wxJSONValue;
-class wxScrolledWindow;
-class wxStaticText;
 class wxTextCtrl;
 class wxTimer;
 class wxWindow;
@@ -28,6 +25,12 @@ struct BoatInfoValue {
     PRIMITIVE_TAPE,
     PRIMITIVE_TREND,
     PRIMITIVE_NONE
+  };
+
+  enum Priority {
+    PRIORITY_PRIMARY = 0,
+    PRIORITY_SECONDARY,
+    PRIORITY_DETAIL
   };
 
   wxString key;
@@ -56,6 +59,7 @@ struct BoatInfoValue {
   bool labelCustomized = false;
   bool alternativeSource = false;
   Primitive primitive = PRIMITIVE_VALUE;
+  Priority priority = PRIORITY_SECONDARY;
 
   bool bounded = false;
   double minimum = 0.0;
@@ -63,8 +67,7 @@ struct BoatInfoValue {
   std::vector<double> trend;
 };
 
-class BoatInfoInstrumentPanel;
-class BoatInfoVesselPanel;
+class BoatInfoDashboardPanel;
 
 class boatinfo_pi : public opencpn_plugin_118 {
 public:
@@ -93,6 +96,7 @@ private:
   struct PreferenceRow {
     wxString key;
     wxCheckBox* visible = nullptr;
+    wxChoice* priority = nullptr;
     wxTextCtrl* label = nullptr;
     wxChoice* primitive = nullptr;
   };
@@ -100,7 +104,7 @@ private:
   void ApplyHostStyle();
   void ClearControlPointers();
   void BuildMainPanel();
-  void RebuildInstrumentGrid();
+  void RebuildDashboard();
   void LoadConfiguration();
   void LoadProfile(const wxString& profileKey, bool allowLegacy);
   void SaveConfiguration();
@@ -110,7 +114,6 @@ private:
   void UpdateSourceSummary();
   void EnsureIdentityValues();
   void ApplyIdentityFallbacks();
-  void UpdateVesselHeader();
   void ActivateVesselProfile(const wxString& signalKSelf);
 
   bool ParseSignalK(const wxString& message);
@@ -124,27 +127,22 @@ private:
   BoatInfoValue& EnsureValue(const wxString& key, const wxString& source,
                              const wxString& path);
   void ApplySemanticDefaults(BoatInfoValue& value);
-  void UpdateInstrument(const wxString& key);
 
   wxBitmap m_pluginBitmap;
   PI_ColorScheme m_colorScheme = PI_GLOBAL_COLOR_SCHEME_DAY;
 
   wxAuiManager* m_auiManager = nullptr;
   wxWindow* m_panel = nullptr;
-  BoatInfoVesselPanel* m_vesselPanel = nullptr;
-  wxScrolledWindow* m_instrumentScroll = nullptr;
-  wxFlexGridSizer* m_instrumentGrid = nullptr;
-  wxStaticText* m_emptyHint = nullptr;
-  wxStaticText* m_dataSourceValue = nullptr;
+  BoatInfoDashboardPanel* m_dashboard = nullptr;
   wxTimer* m_staleTimer = nullptr;
 
   std::map<wxString, BoatInfoValue> m_values;
-  std::map<wxString, BoatInfoInstrumentPanel*> m_instruments;
   wxString m_signalKSelf;
   wxString m_profileKey = wxT("default");
   wxString m_manualVesselName;
   wxString m_manualMmsi;
   wxString m_manualCallSign;
+  wxString m_sourceSummary;
   bool m_configLoaded = false;
   bool m_seenOpenCPN = false;
   bool m_seenSignalK = false;
