@@ -32,9 +32,11 @@ find_package(wxWidgets REQUIRED COMPONENTS base core aui)
 include(${wxWidgets_USE_FILE})
 
 add_library(boatinfo_pi SHARED
-    src/boatinfo_pi.cpp
+    src/boatinfo_core.cpp
+    src/boatinfo_dashboard.cpp
     src/boatinfo_identity.cpp
     include/boatinfo_pi.h
+    include/boatinfo_dashboard.h
 )
 
 target_include_directories(boatinfo_pi PRIVATE
