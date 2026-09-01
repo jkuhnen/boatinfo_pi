@@ -3,7 +3,7 @@
   <name>BoatInfo</name>
   <version>@PACKAGE_VERSION@</version>
   <release>0</release>
-  <summary>Own-vessel navigation and onboard system information</summary>
+  <summary>Configurable own-vessel navigation and onboard information</summary>
 
   <api-version>@OCPN_API_VERSION@</api-version>
   <open-source>yes</open-source>
@@ -11,7 +11,7 @@
   <source>https://github.com/jkuhnen/boatinfo_pi</source>
 
   <description>
-    BoatInfo displays own-vessel identity, navigation and electrical information from OpenCPN data sources in a compact docked panel.
+    BoatInfo displays user-selected own-vessel identity, navigation and onboard system information from OpenCPN data sources in a compact responsive bottom-docked text dashboard.
   </description>
 
   <target>@OCPN_PACKAGE_TARGET@</target>
