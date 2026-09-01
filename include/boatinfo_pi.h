@@ -25,8 +25,8 @@ struct BoatInfoValue {
     PRESENTATION_DIGITAL_ANALOG
   };
 
-  // Legacy PR #15 modes remain readable in stored profiles. The stable v1
-  // live dashboard is text-only; these values no longer control rendering.
+  // Legacy PR #15 modes remain readable in stored profiles. Stable v1 renders
+  // text only; these values no longer control the live dashboard.
   enum Primitive {
     PRIMITIVE_VALUE = 0,
     PRIMITIVE_LEVEL,
@@ -65,6 +65,10 @@ struct BoatInfoValue {
   bool hasNumericValue = false;
   wxString textValue;
 
+  // valid/stale are retained for the already-tested acquisition path. The
+  // presentation layer maps these into explicit DevKit validity states.
+  bool valid = false;
+  bool stale = false;
   Validity validity = VALIDITY_NO_DATA;
   bool manualFallback = false;
   long long lastUpdateSeconds = 0;
@@ -84,7 +88,13 @@ struct BoatInfoValue {
   double maximum = 1.0;
   std::vector<double> trend;
 
-  bool IsCurrent() const { return validity == VALIDITY_VALID; }
+  Validity EffectiveValidity() const {
+    if (stale) return VALIDITY_STALE;
+    if (valid) return VALIDITY_VALID;
+    return validity == VALIDITY_VALID ? VALIDITY_NO_DATA : validity;
+  }
+
+  bool IsCurrent() const { return EffectiveValidity() == VALIDITY_VALID; }
 };
 
 class BoatInfoDashboardPanel;
@@ -118,7 +128,7 @@ private:
     wxCheckBox* visible = nullptr;
     wxChoice* priority = nullptr;
     wxTextCtrl* label = nullptr;
-    wxChoice* presentation = nullptr;
+    wxChoice* primitive = nullptr;  // legacy config compatibility in v1
   };
 
   void ApplyHostStyle();
@@ -144,8 +154,6 @@ private:
                    const wxString& path, const wxString& value);
   void ObserveNoData(const wxString& key, const wxString& source,
                      const wxString& path);
-  void ObserveUnknown(const wxString& key, const wxString& source,
-                      const wxString& path);
   BoatInfoValue& EnsureValue(const wxString& key, const wxString& source,
                              const wxString& path);
   void ApplySemanticDefaults(BoatInfoValue& value);
